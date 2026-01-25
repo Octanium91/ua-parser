@@ -16,6 +16,8 @@ class UaParser:
             
             if system == "Windows":
                 lib_name = f"ua-parser-windows-{arch}.dll"
+            elif system == "Darwin":
+                lib_name = f"ua-parser-darwin-{arch}.dylib"
             else:
                 lib_name = f"ua-parser-linux-{arch}.so"
             
@@ -26,7 +28,13 @@ class UaParser:
             system = platform.system()
             machine = platform.machine().lower()
             arch = "arm64" if machine in ["arm64", "aarch64"] else "amd64"
-            alt_path = f"ua-parser-windows-{arch}.dll" if system == "Windows" else f"ua-parser-linux-{arch}.so"
+            if system == "Windows":
+                alt_path = f"ua-parser-windows-{arch}.dll"
+            elif system == "Darwin":
+                alt_path = f"ua-parser-darwin-{arch}.dylib"
+            else:
+                alt_path = f"ua-parser-linux-{arch}.so"
+
             if os.path.exists(alt_path):
                 lib_path = alt_path
             else:

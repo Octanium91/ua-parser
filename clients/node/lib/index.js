@@ -8,9 +8,18 @@ class UaParser {
     constructor(libPath) {
         if (!libPath) {
             const isWindows = process.platform === 'win32';
+            const isMac = process.platform === 'darwin';
             const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-            const ext = isWindows ? 'dll' : 'so';
-            const platform = isWindows ? 'windows' : 'linux';
+            let ext = 'so';
+            let platform = 'linux';
+
+            if (isWindows) {
+                ext = 'dll';
+                platform = 'windows';
+            } else if (isMac) {
+                ext = 'dylib';
+                platform = 'darwin';
+            }
             libPath = path.join(__dirname, `ua-parser-${platform}-${arch}.${ext}`);
         }
 
@@ -19,9 +28,18 @@ class UaParser {
         } catch (e) {
             // Fallback to current working directory
             const isWindows = process.platform === 'win32';
+            const isMac = process.platform === 'darwin';
             const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-            const ext = isWindows ? 'dll' : 'so';
-            const platform = isWindows ? 'windows' : 'linux';
+            let ext = 'so';
+            let platform = 'linux';
+
+            if (isWindows) {
+                ext = 'dll';
+                platform = 'windows';
+            } else if (isMac) {
+                ext = 'dylib';
+                platform = 'darwin';
+            }
             const fallbackPath = path.join(process.cwd(), `ua-parser-${platform}-${arch}.${ext}`);
             try {
                 this.lib = koffi.load(fallbackPath);

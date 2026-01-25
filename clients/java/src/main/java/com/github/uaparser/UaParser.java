@@ -36,6 +36,8 @@ public class UaParser {
 
         if (os.contains("win")) {
             return "ua-parser-windows-" + archSuffix + ".dll";
+        } else if (os.contains("mac") || os.contains("darwin")) {
+            return "ua-parser-darwin-" + archSuffix + ".dylib";
         } else {
             return "ua-parser-linux-" + archSuffix + ".so";
         }

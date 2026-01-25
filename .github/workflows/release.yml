@@ -63,6 +63,10 @@ jobs:
             output_lib: ua-parser-linux-arm64.so
           - os: windows-latest
             output_lib: ua-parser-windows-amd64.dll
+          - os: macos-13
+            output_lib: ua-parser-darwin-amd64.dylib
+          - os: macos-latest
+            output_lib: ua-parser-darwin-arm64.dylib
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -307,6 +311,10 @@ jobs:
             release-artifacts/ua-parser-linux-arm64.h
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h
+            release-artifacts/ua-parser-darwin-amd64.dylib
+            release-artifacts/ua-parser-darwin-amd64.h
+            release-artifacts/ua-parser-darwin-arm64.dylib
+            release-artifacts/ua-parser-darwin-arm64.h
             release-artifacts/*.whl
           body: |
             ## Universal User-Agent Parser Release ${{ github.ref_name }}
@@ -316,6 +324,7 @@ jobs:
             - **ua-server-windows-amd64.exe**: Standalone REST API server for Windows.
             - **ua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
+            - **ua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
             ### Package Managers (GitHub Packages)

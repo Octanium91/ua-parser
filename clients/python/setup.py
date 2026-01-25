@@ -5,7 +5,7 @@ setup(
     version="1.1.0",
     packages=find_packages(),
     package_data={
-        "uaparser": ["*.so", "*.dll", "*.h"],
+        "uaparser": ["*.so", "*.dll", "*.dylib", "*.h"],
     },
     description="Python wrapper for the Universal User-Agent Parser",
     long_description=open("README.md").read(),
