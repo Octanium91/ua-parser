@@ -179,6 +179,8 @@ jobs:
 
       - name: Publish to GitHub Packages
         run: mvn -B deploy -f clients/java/pom.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-node:
     name: Publish Node.js Package
