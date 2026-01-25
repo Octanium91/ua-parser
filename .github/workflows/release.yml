@@ -58,15 +58,21 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
             output_lib: ua-parser-linux-amd64.so
           - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
             output_lib: ua-parser-linux-arm64.so
           - os: windows-latest
+            goos: windows
+            goarch: amd64
             output_lib: ua-parser-windows-amd64.dll
-          - os: macos-13
-            output_lib: ua-parser-darwin-amd64.dylib
           - os: macos-latest
-            output_lib: ua-parser-darwin-arm64.dylib
+            goos: darwin
+            goarch: "universal"
+            output_lib: "dummy"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -78,14 +84,21 @@ jobs:
         env:
           CGO_ENABLED: 1
         run: |
-          go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
+          if [ "${{ matrix.goos }}" == "darwin" ]; then
+            echo "Building macOS Universal..."
+            GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o ua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
+            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o ua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
+          else
+            GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
+          fi
 
       - name: Upload Shared Library Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: shared-lib-${{ matrix.os }}
+          name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}
           path: |
             ${{ matrix.output_lib }}
+            ua-parser-darwin-*.dylib
             *.h
 
   docker:
