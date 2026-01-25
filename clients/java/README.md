@@ -27,8 +27,11 @@ import com.github.uaparser.UaParser;
 
 public class Main {
     public static void main(String[] args) {
-        // Initialize with path to the shared library
-        UaParser parser = new UaParser("./ua-parser-linux.so");
+        // Initialize the parser (automatically detects OS for lib name)
+        UaParser parser = new UaParser();
+
+        // Or specify path explicitly
+        // UaParser parser = new UaParser("./ua-parser-linux.so");
 
         // Initialize the core
         parser.init("{\"disable_auto_update\": false, \"lru_cache_size\": 1000}");

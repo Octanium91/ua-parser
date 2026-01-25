@@ -21,7 +21,7 @@
 - **Multi-Platform Clients**: The project provides official clients for multiple platforms (Go, Python, Node.js, Java) located in the `/clients` directory.
 - **Package Distribution**:
   - All artifacts are primarily published to **GitHub Packages** (Maven for Java, npm for Node.js).
-  - Docker images are published to both **GitHub Container Registry (ghcr.io)** and **Docker Hub**.
+  - Docker images are published to **GitHub Container Registry (ghcr.io)**.
   - Shared libraries and Python wheels are distributed via **GitHub Releases**.
 
 ## Performance & Logging

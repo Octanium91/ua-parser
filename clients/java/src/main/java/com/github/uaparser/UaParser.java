@@ -21,8 +21,21 @@ public class UaParser {
 
     private final UaParserLib lib;
 
+    public UaParser() {
+        this(getDefaultLibPath());
+    }
+
     public UaParser(String libPath) {
         this.lib = Native.load(libPath, UaParserLib.class);
+    }
+
+    private static String getDefaultLibPath() {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            return "ua-parser-windows.dll";
+        } else {
+            return "ua-parser-linux.so";
+        }
     }
 
     /**

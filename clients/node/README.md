@@ -4,19 +4,20 @@ This is the Node.js wrapper for the high-performance Universal User-Agent Parser
 
 ## Installation
 
-1.  **Download the driver**: Ensure you have the shared library (`ua-parser-linux.so` or `ua-parser-windows.dll`) from the [GitHub Releases](https://github.com/octanium91/ua-parser/releases).
-2.  **Install the package**:
-    ```bash
-    npm install @octanium91/ua-parser
-    ```
+Install the package from GitHub Packages:
+```bash
+npm install @octanium91/ua-parser
+```
+
+> **Note**: The package automatically includes the required native binaries for Windows and Linux.
 
 ## Usage
 
 ```javascript
 const UaParser = require('@octanium91/ua-parser');
 
-// Initialize with path to the shared library
-const parser = new UaParser('./ua-parser-linux.so');
+// Initialize the parser
+const parser = new UaParser();
 
 // Initialize the core
 parser.init({ disable_auto_update: false, lru_cache_size: 1000 });

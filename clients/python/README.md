@@ -18,8 +18,8 @@ This package is distributed via GitHub Releases.
 ```python
 from uaparser import UaParser
 
-# Initialize with path to the shared library
-parser = UaParser(lib_path="./ua-parser-linux.so")
+# Initialize the parser
+parser = UaParser()
 
 # Initialize the core (starts updater if not disabled)
 parser.init({"disable_auto_update": False, "lru_cache_size": 1000})

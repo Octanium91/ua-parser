@@ -12,7 +12,7 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
 - **Hot-Swap**: Background `regexes.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
 - **Embedded**: Core regex patterns are bundled into the binary using `go:embed`.
-- **CI/CD**: Fully automated builds and multi-platform distribution (GitHub Packages, Docker Hub, GHCR) via **GitHub Actions**.
+- **CI/CD**: Fully automated builds and multi-platform distribution (GitHub Packages, GHCR) via **GitHub Actions**.
 
 ## Client Libraries
 
@@ -146,7 +146,7 @@ The library can be compiled into a shared library for use with other languages v
 - **Linux**: `ua-parser-linux.so`
 - **Windows**: `ua-parser-windows.dll`
 
-These files are the **required drivers** for Python, Node.js, and Java integrations.
+These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically.
 
 ### Exported Functions:
 - `Init(configJSON)` — Initializes the parser.
