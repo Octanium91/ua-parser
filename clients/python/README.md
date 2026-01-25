@@ -13,6 +13,8 @@ This package is distributed via GitHub Releases.
     pip install ./ua_parser_core-1.1.0-py3-none-any.whl
     ```
 
+> **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
+
 ## Usage
 
 ```python

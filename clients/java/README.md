@@ -18,7 +18,7 @@ Add the dependency to your `pom.xml` (Ensure you have configured GitHub Packages
 
 ### Driver
 
-Ensure you have the shared library (`ua-parser-linux.so` or `ua-parser-windows.dll`) from the [GitHub Releases](https://github.com/octanium91/ua-parser/releases).
+Ensure you have the shared library (`ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so` or `ua-parser-windows-amd64.dll`) from the [GitHub Releases](https://github.com/octanium91/ua-parser/releases).
 
 ## Usage
 

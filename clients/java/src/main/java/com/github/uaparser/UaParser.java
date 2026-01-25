@@ -31,10 +31,13 @@ public class UaParser {
 
     private static String getDefaultLibPath() {
         String os = System.getProperty("os.name").toLowerCase();
+        String arch = System.getProperty("os.arch").toLowerCase();
+        String archSuffix = (arch.contains("arm") || arch.contains("aarch64")) ? "arm64" : "amd64";
+
         if (os.contains("win")) {
-            return "ua-parser-windows.dll";
+            return "ua-parser-windows-" + archSuffix + ".dll";
         } else {
-            return "ua-parser-linux.so";
+            return "ua-parser-linux-" + archSuffix + ".so";
         }
     }
 

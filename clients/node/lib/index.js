@@ -8,14 +8,21 @@ class UaParser {
     constructor(libPath) {
         if (!libPath) {
             const isWindows = process.platform === 'win32';
-            libPath = path.join(__dirname, isWindows ? 'ua-parser-windows.dll' : 'ua-parser-linux.so');
+            const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+            const ext = isWindows ? 'dll' : 'so';
+            const platform = isWindows ? 'windows' : 'linux';
+            libPath = path.join(__dirname, `ua-parser-${platform}-${arch}.${ext}`);
         }
 
         try {
             this.lib = koffi.load(libPath);
         } catch (e) {
             // Fallback to current working directory
-            const fallbackPath = path.join(process.cwd(), process.platform === 'win32' ? 'ua-parser-windows.dll' : 'ua-parser-linux.so');
+            const isWindows = process.platform === 'win32';
+            const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+            const ext = isWindows ? 'dll' : 'so';
+            const platform = isWindows ? 'windows' : 'linux';
+            const fallbackPath = path.join(process.cwd(), `ua-parser-${platform}-${arch}.${ext}`);
             try {
                 this.lib = koffi.load(fallbackPath);
             } catch (e2) {

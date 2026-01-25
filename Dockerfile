@@ -13,11 +13,14 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
+ARG TARGETOS
+ARG TARGETARCH
+
 # Build the REST server
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o ua-server ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o ua-server ./cmd/server/main.go
 
 # Build the C-shared library (requires CGO)
-RUN CGO_ENABLED=1 go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go
 
 # Stage 2: Final image
 FROM alpine:latest

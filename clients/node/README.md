@@ -9,7 +9,7 @@ Install the package from GitHub Packages:
 npm install @octanium91/ua-parser
 ```
 
-> **Note**: The package automatically includes the required native binaries for Windows and Linux.
+> **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
 
 ## Usage
 

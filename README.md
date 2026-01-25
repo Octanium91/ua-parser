@@ -8,6 +8,7 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
   - **Native Library**: Importable Go package.
   - **Microservice**: Ready-to-use HTTP REST API server.
   - **Multi-Language Support**: Official wrappers for **Python**, **Node.js**, and **Java** (located in `/clients`).
+  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64**, and **windows/amd64**.
 - **Client Hints Priority**: Automatically uses `Sec-CH-UA` headers with **highest priority** for precise OS and device detection (e.g., distinguishing Windows 11 from Windows 10 where the UA string might be ambiguous).
 - **Hot-Swap**: Background `regexes.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
@@ -143,10 +144,10 @@ The parser includes a dedicated logic to detect common bots and AI-related crawl
 
 The library can be compiled into a shared library for use with other languages via FFI. Pre-compiled binaries are available in GitHub Releases.
 
-- **Linux**: `ua-parser-linux.so`
-- **Windows**: `ua-parser-windows.dll`
+- **Linux**: `ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`
+- **Windows**: `ua-parser-windows-amd64.dll`
 
-These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically.
+These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically for all supported architectures.
 
 ### Exported Functions:
 - `Init(configJSON)` — Initializes the parser.

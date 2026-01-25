@@ -11,14 +11,22 @@ class UaParser:
     def __init__(self, lib_path=None):
         if lib_path is None:
             system = platform.system()
+            machine = platform.machine().lower()
+            arch = "arm64" if machine in ["arm64", "aarch64"] else "amd64"
+            
             if system == "Windows":
-                lib_path = os.path.join(os.path.dirname(__file__), "ua-parser-windows.dll")
+                lib_name = f"ua-parser-windows-{arch}.dll"
             else:
-                lib_path = os.path.join(os.path.dirname(__file__), "ua-parser-linux.so")
+                lib_name = f"ua-parser-linux-{arch}.so"
+            
+            lib_path = os.path.join(os.path.dirname(__file__), lib_name)
         
         if not os.path.exists(lib_path):
             # Try current directory as fallback
-            alt_path = "ua-parser-windows.dll" if platform.system() == "Windows" else "ua-parser-linux.so"
+            system = platform.system()
+            machine = platform.machine().lower()
+            arch = "arm64" if machine in ["arm64", "aarch64"] else "amd64"
+            alt_path = f"ua-parser-windows-{arch}.dll" if system == "Windows" else f"ua-parser-linux-{arch}.so"
             if os.path.exists(alt_path):
                 lib_path = alt_path
             else:
