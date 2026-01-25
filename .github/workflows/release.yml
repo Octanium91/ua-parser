@@ -1,0 +1,318 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: Run Tests
+        run: go test -v ./...
+
+  build-server:
+    name: Build Server Executables
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Build Linux Server
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ua-server-linux-amd64 ./cmd/server/main.go
+      
+      - name: Build Windows Server
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ua-server-windows-amd64.exe ./cmd/server/main.go
+
+      - name: Upload Server Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-executables
+          path: |
+            ua-server-linux-amd64
+            ua-server-windows-amd64.exe
+
+  build-shared-libs:
+    name: Build Core Libs (Python/Node/Java)
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            output_lib: ua-parser-linux.so
+            output_header: ua-parser-linux.h
+          - os: windows-latest
+            output_lib: ua-parser-windows.dll
+            output_header: ua-parser-windows.h
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      
+      - name: Build Shared Library
+        env:
+          CGO_ENABLED: 1
+        run: |
+          go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
+          # Rename generated header to match expectations if necessary
+          # go build -buildmode=c-shared -o name.so generates name.h
+          # So for windows it generates ua-parser-windows.h already.
+
+      - name: Upload Shared Library Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-lib-${{ matrix.os }}
+          path: |
+            ${{ matrix.output_lib }}
+            *.h
+
+  docker:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Prepare lowercase image name
+        id: prep
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/ua-parser
+            ${{ steps.prep.outputs.image }}
+          tags: |
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable=${{ github.ref == format('refs/tags/{0}', github.event.repository.default_branch) }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  publish-java:
+    name: Publish Java Package
+    needs: build-shared-libs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 8
+        uses: actions/setup-java@v3
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          server-id: github
+          settings-path: ${{ github.workspace }}
+
+      - name: Extract Version
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Update Maven Version & Group ID
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          VERSION="${{ steps.get_version.outputs.version }}"
+          mvn versions:set -DnewVersion=$VERSION -f clients/java/pom.xml -DgenerateBackupPoms=false
+          sed -i "s|<groupId>com.github.uaparser</groupId>|<groupId>com.github.$OWNER</groupId>|g" clients/java/pom.xml
+          sed -i "s|<url>https://maven.pkg.github.com/uaparser/ua-parser</url>|<url>https://maven.pkg.github.com/${{ github.repository }}</url>|g" clients/java/pom.xml
+
+      - name: Publish to GitHub Packages
+        run: mvn -B deploy -f clients/java/pom.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-node:
+    name: Publish Node.js Package
+    needs: build-shared-libs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Info
+        id: info
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@${{ steps.info.outputs.owner }}'
+
+      - name: Download Shared Libs
+        uses: actions/download-artifact@v4
+        with:
+          path: clients/node/lib/
+          merge-multiple: true
+
+      - name: Update Package Metadata
+        run: |
+          cd clients/node
+          OWNER="${{ steps.info.outputs.owner }}"
+          VERSION="${{ steps.info.outputs.version }}"
+
+          npm version $VERSION --no-git-tag-version --allow-same-version
+
+          sed -i "s|@uaparser/ua-parser|@$OWNER/ua-parser|g" package.json
+
+          echo "Package prepared: @$OWNER/ua-parser v$VERSION"
+
+      - name: Publish to GitHub Packages
+        run: |
+          cd clients/node
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-python:
+    name: Build Python Wheel
+    needs: build-shared-libs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract Version
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel setuptools
+      
+      - name: Download Shared Libs
+        uses: actions/download-artifact@v4
+        with:
+          path: clients/python/uaparser/
+          merge-multiple: true
+
+      - name: Update Setup.py Version
+        run: |
+          cd clients/python
+          VERSION="${{ steps.get_version.outputs.version }}"
+          sed -i "s|version=\"[^\"]*\"|version=\"$VERSION\"|g" setup.py
+          echo "Updated setup.py to version $VERSION"
+
+      - name: Build Wheel
+        run: |
+          cd clients/python
+          python setup.py bdist_wheel
+
+      - name: Upload Wheel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel
+          path: clients/python/dist/*.whl
+
+  release:
+    name: Create Release
+    needs: [build-server, build-shared-libs, docker, publish-python]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Prepare lowercase names
+        id: prep
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-artifacts/ua-server-linux-amd64
+            release-artifacts/ua-server-windows-amd64.exe
+            release-artifacts/ua-parser-linux.so
+            release-artifacts/ua-parser-linux.h
+            release-artifacts/ua-parser-windows.dll
+            release-artifacts/ua-parser-windows.h
+            release-artifacts/*.whl
+          body: |
+            ## Universal User-Agent Parser Release ${{ github.ref_name }}
+            
+            ### Artifacts Description
+            - **ua-server-linux-amd64**: Standalone REST API server for Linux.
+            - **ua-server-windows-amd64.exe**: Standalone REST API server for Windows.
+            - **ua-parser-linux.so / .h**: Shared library for Linux. **Required driver for Python, Node.js, and Java integrations.**
+            - **ua-parser-windows.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
+            - **.whl**: Python wheel for easy installation.
+            
+            ### Package Managers (GitHub Packages)
+            - **Java (Maven)**: `com.github.${{ steps.prep.outputs.owner }}:ua-parser`
+            - **Node.js (npm)**: `@${{ steps.prep.outputs.owner }}/ua-parser`
+            
+            ### Docker Image
+            - `docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ua-parser:${{ github.ref_name }}`
+            - `docker pull ghcr.io/${{ steps.prep.outputs.repo }}:${{ github.ref_name }}`
+          draft: false
+          prerelease: false
