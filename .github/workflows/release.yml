@@ -141,41 +141,43 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Get Info
+        id: info
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Set up JDK 8
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '8'
           distribution: 'temurin'
           server-id: github
-          server-username: "${{ github.actor }}"
-          server-password: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Extract Version
-        id: get_version
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
+          server-username: ${{ steps.info.outputs.owner }}
+          server-password: GITHUB_TOKEN
 
       - name: Update Maven Version & Group ID
         run: |
-          # 1. Вычисляем lowercase значения
-          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          VERSION="${{ steps.get_version.outputs.version }}"
+          OWNER="${{ steps.info.outputs.owner }}"
+          REPO="${{ steps.info.outputs.repo }}"
+          VERSION="${{ steps.info.outputs.version }}"
           POM_FILE="clients/java/pom.xml"
 
-          echo "Configuring POM for: $OWNER_LOWER / $REPO_LOWER version $VERSION"
+          echo "Configuring POM for: $OWNER / $REPO version $VERSION"
 
-          # 2. Устанавливаем версию
+          # 1. Update version
           mvn versions:set -DnewVersion=$VERSION -f $POM_FILE -DgenerateBackupPoms=false
 
-          # 3. Меняем GroupId на lowercase (com.github.octanium91)
-          sed -i "s|<groupId>com.github.uaparser</groupId>|<groupId>com.github.$OWNER_LOWER</groupId>|g" $POM_FILE
+          # 2. Change GroupId to lowercase
+          sed -i "s|<groupId>com.github.[^<]*</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE
 
-          # 4. Меняем URL репозитория на lowercase (иначе будет 401 Unauthorized)
-          # Заменяем старый URL (с возможными заглавными) на новый полностью в нижнем регистре
-          sed -i "s|<url>https://maven.pkg.github.com/.*</url>|<url>https://maven.pkg.github.com/$REPO_LOWER</url>|g" $POM_FILE
+          # 3. Change Repository URL to lowercase
+          sed -i "s|<url>https://maven.pkg.github.com/.*</url>|<url>https://maven.pkg.github.com/$REPO</url>|g" $POM_FILE
+          
+          echo "Updated POM.xml:"
+          cat $POM_FILE
 
       - name: Publish to GitHub Packages
         run: mvn -B deploy -f clients/java/pom.xml
@@ -194,11 +196,9 @@ jobs:
       - name: Get Info
         id: info
         run: |
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "owner=$OWNER" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      - uses: actions/setup-node@v3
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
@@ -235,11 +235,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract Version
-        id: get_version
+      - name: Get Info
+        id: info
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -259,7 +258,7 @@ jobs:
       - name: Update Setup.py Version
         run: |
           cd clients/python
-          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="${{ steps.info.outputs.version }}"
           sed -i "s|version=\"[^\"]*\"|version=\"$VERSION\"|g" setup.py
           echo "Updated setup.py to version $VERSION"
 
