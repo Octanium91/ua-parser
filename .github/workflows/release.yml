@@ -147,7 +147,8 @@ jobs:
           java-version: '8'
           distribution: 'temurin'
           server-id: github
-          settings-path: ${{ github.workspace }}
+          server-username: "${{ github.actor }}"
+          server-password: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Extract Version
         id: get_version
@@ -178,8 +179,6 @@ jobs:
 
       - name: Publish to GitHub Packages
         run: mvn -B deploy -f clients/java/pom.xml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-node:
     name: Publish Node.js Package
