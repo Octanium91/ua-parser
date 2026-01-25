@@ -72,7 +72,7 @@ jobs:
           - os: macos-latest
             goos: darwin
             goarch: "universal"
-            output_lib: "dummy"
+            output_lib: ua-parser-darwin.dylib
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -81,6 +81,7 @@ jobs:
           cache: true
       
       - name: Build Shared Library
+        shell: bash
         env:
           CGO_ENABLED: 1
         run: |
