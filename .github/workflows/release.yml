@@ -255,17 +255,26 @@ jobs:
 
           echo "Configuring POM for: $OWNER / $REPO version $VERSION"
 
-          # 1. Update version
-          mvn versions:set -DnewVersion=$VERSION -f $POM_FILE -DgenerateBackupPoms=false
+          # 1. Update version (using sed for reliability, targeting the placeholder comment)
+          sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>$VERSION</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
 
-          # 2. Update GroupId
-          sed -i "s|<groupId>com.github.[^<]*</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE
+          # 2. Update GroupId (only the project groupId)
+          sed -i "s|<groupId>com.github.Octanium91</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE
 
           # 3. Update Repository URL
-          sed -i "s|<url>https://maven.pkg.github.com/.*</url>|<url>https://maven.pkg.github.com/$REPO</url>|g" $POM_FILE
+          sed -i "s|<url>https://maven.pkg.github.com/Octanium91/ua-parser</url>|<url>https://maven.pkg.github.com/$REPO</url>|g" $POM_FILE
           
           echo "Updated POM.xml:"
           cat $POM_FILE
+
+      - name: Build JAR file
+        run: mvn -B package -f clients/java/pom.xml -DskipTests
+
+      - name: Upload Java Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-jar
+          path: clients/java/target/*.jar
 
       - name: Publish to GitHub Packages
         run: mvn -B deploy -f clients/java/pom.xml
@@ -357,7 +366,7 @@ jobs:
         run: |
           cd clients/python
           VERSION="${{ steps.info.outputs.version }}"
-          sed -i "s|version=\"[^\"]*\"|version=\"$VERSION\"|g" setup.py
+          sed -i "s|version=\"[^\"]*\",  # Placeholder, managed by CI|version=\"$VERSION\",  # Placeholder, managed by CI|g" setup.py
           echo "Updated setup.py to version $VERSION"
 
       - name: Build Wheel
@@ -373,7 +382,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-server, build-shared-libs, docker, publish-python]
+    needs: [build-server, build-shared-libs, docker, publish-python, publish-java]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -412,6 +421,7 @@ jobs:
             release-artifacts/ua-parser.wasm
             release-artifacts/wasm_exec.js
             release-artifacts/*.whl
+            release-artifacts/*.jar
           body: |
             ## Universal User-Agent Parser Release ${{ github.ref_name }}
             

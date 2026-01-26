@@ -2,8 +2,8 @@
 
 package core
 
-// startUpdater у WASM версії нічого не робить, оскільки оновленнями керує браузерний кеш/CDN.
-// Це дозволяє уникнути імпорту пакету "net/http", що суттєво зменшує розмір файлу.
+// startUpdater in the WASM version does nothing, as updates are managed by the browser cache/CDN.
+// This avoids importing the "net/http" package, which significantly reduces the file size.
 func (p *Parser) startUpdater() {
 	return
 }
