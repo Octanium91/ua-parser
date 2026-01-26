@@ -64,11 +64,11 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            output_lib: ua-parser-linux-amd64.so
+            output_lib: libua-parser-linux-amd64.so
           - os: ubuntu-latest
             goos: linux
             goarch: arm64
-            output_lib: ua-parser-linux-arm64.so
+            output_lib: libua-parser-linux-arm64.so
           - os: windows-latest
             goos: windows
             goarch: amd64
@@ -76,7 +76,7 @@ jobs:
           - os: macos-latest
             goos: darwin
             goarch: "universal"
-            output_lib: ua-parser-darwin.dylib
+            output_lib: libua-parser-darwin.dylib
           # WebAssembly build
           - os: ubuntu-latest
             goos: js
@@ -99,8 +99,8 @@ jobs:
         run: |
           if [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
-            GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o ua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
-            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o ua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
+            GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
+            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
           elif [ "${{ matrix.goos }}" == "js" ]; then
             echo "Building WebAssembly..."
             # Install wasm-opt (binaryen) for size optimization
@@ -116,7 +116,7 @@ jobs:
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (Cross-compile)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -o ua-parser-linux-arm64.so ./cmd/cshared/main.go
+            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
           else
             GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
           fi
@@ -213,6 +213,16 @@ jobs:
           path: clients/java/src/main/resources
           merge-multiple: true
 
+      - name: Clean up and Verify Resources
+        run: |
+          # Remove headers and other non-library files from JAR resources
+          rm -f clients/java/src/main/resources/*.h
+          rm -f clients/java/src/main/resources/wasm_exec.js
+          rm -f clients/java/src/main/resources/ua-parser.wasm
+          
+          echo "Final resources to be bundled in JAR:"
+          ls -R clients/java/src/main/resources
+
       - name: Update Maven Version & Group ID
         run: |
           OWNER="${{ steps.info.outputs.owner }}"
@@ -265,6 +275,9 @@ jobs:
           path: clients/node/lib/
           merge-multiple: true
 
+      - name: Clean up headers
+        run: rm -f clients/node/lib/*.h
+
       - name: Update Package Metadata
         run: |
           cd clients/node
@@ -309,6 +322,13 @@ jobs:
         with:
           path: clients/python/uaparser/
           merge-multiple: true
+
+      - name: Clean up and Verify Resources
+        run: |
+          rm -f clients/python/uaparser/*.h
+          rm -f clients/python/uaparser/wasm_exec.js
+          rm -f clients/python/uaparser/ua-parser.wasm
+          ls -R clients/python/uaparser/
 
       - name: Update Setup.py Version
         run: |
@@ -356,16 +376,16 @@ jobs:
             release-artifacts/ua-server-linux-amd64
             release-artifacts/ua-server-linux-arm64
             release-artifacts/ua-server-windows-amd64.exe
-            release-artifacts/ua-parser-linux-amd64.so
-            release-artifacts/ua-parser-linux-amd64.h
-            release-artifacts/ua-parser-linux-arm64.so
-            release-artifacts/ua-parser-linux-arm64.h
+            release-artifacts/libua-parser-linux-amd64.so
+            release-artifacts/libua-parser-linux-amd64.h
+            release-artifacts/libua-parser-linux-arm64.so
+            release-artifacts/libua-parser-linux-arm64.h
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h
-            release-artifacts/ua-parser-darwin-amd64.dylib
-            release-artifacts/ua-parser-darwin-amd64.h
-            release-artifacts/ua-parser-darwin-arm64.dylib
-            release-artifacts/ua-parser-darwin-arm64.h
+            release-artifacts/libua-parser-darwin-amd64.dylib
+            release-artifacts/libua-parser-darwin-amd64.h
+            release-artifacts/libua-parser-darwin-arm64.dylib
+            release-artifacts/libua-parser-darwin-arm64.h
             release-artifacts/ua-parser.wasm
             release-artifacts/wasm_exec.js
             release-artifacts/*.whl
@@ -375,9 +395,9 @@ jobs:
             ### Artifacts Description
             - **ua-server-linux-amd64 / arm64**: Standalone REST API server for Linux.
             - **ua-server-windows-amd64.exe**: Standalone REST API server for Windows.
-            - **ua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+            - **libua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
-            - **ua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+            - **libua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser.wasm / wasm_exec.js**: WebAssembly module and loader for Browser support.
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             

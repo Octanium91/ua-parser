@@ -17,9 +17,9 @@ class UaParser:
             if system == "Windows":
                 lib_name = f"ua-parser-windows-{arch}.dll"
             elif system == "Darwin":
-                lib_name = f"ua-parser-darwin-{arch}.dylib"
+                lib_name = f"libua-parser-darwin-{arch}.dylib"
             else:
-                lib_name = f"ua-parser-linux-{arch}.so"
+                lib_name = f"libua-parser-linux-{arch}.so"
             
             lib_path = os.path.join(os.path.dirname(__file__), lib_name)
         
@@ -31,9 +31,9 @@ class UaParser:
             if system == "Windows":
                 alt_path = f"ua-parser-windows-{arch}.dll"
             elif system == "Darwin":
-                alt_path = f"ua-parser-darwin-{arch}.dylib"
+                alt_path = f"libua-parser-darwin-{arch}.dylib"
             else:
-                alt_path = f"ua-parser-linux-{arch}.so"
+                alt_path = f"libua-parser-linux-{arch}.so"
 
             if os.path.exists(alt_path):
                 lib_path = alt_path

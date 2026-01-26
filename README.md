@@ -166,8 +166,9 @@ The parser includes a dedicated logic to detect common bots and AI-related crawl
 
 The library can be compiled into a shared library for use with other languages via FFI. Pre-compiled binaries are available in GitHub Releases.
 
-- **Linux**: `ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`
+- **Linux**: `libua-parser-linux-amd64.so`, `libua-parser-linux-arm64.so`
 - **Windows**: `ua-parser-windows-amd64.dll`
+- **macOS**: `libua-parser-darwin-amd64.dylib`, `libua-parser-darwin-arm64.dylib`
 
 These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically for all supported architectures.
 

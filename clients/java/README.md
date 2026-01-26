@@ -80,9 +80,9 @@ dependencies {
 
 ### Driver
 
-Ensure you have the shared library (`ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`, `ua-parser-windows-amd64.dll`, `ua-parser-darwin-amd64.dylib` or `ua-parser-darwin-arm64.dylib`) from the [GitHub Releases](https://github.com/Octanium91/ua-parser/releases).
+Native libraries for all supported platforms (**Linux**, **Windows**, **macOS**) are bundled inside the JAR. The library automatically detects the operating system and architecture to load the correct driver using JNA.
 
-> **Note**: Native libraries are bundled inside the JAR, but you can also manually place the shared library in your working directory if needed.
+> **Note**: You can also manually provide a path to a custom shared library when creating the `UaParser` instance. If you do this, make sure the library name follows the standard convention for your OS (e.g., `libua-parser-linux-amd64.so` on Linux).
 
 ## Usage
 
@@ -91,11 +91,11 @@ import com.github.octanium91.UaParser;
 
 public class Main {
     public static void main(String[] args) {
-        // Initialize the parser (automatically detects OS for lib name)
+        // Initialize the parser (automatically detects OS and loads bundled lib)
         UaParser parser = new UaParser();
 
-        // Or specify path explicitly
-        // UaParser parser = new UaParser("./ua-parser-linux.so");
+        // Or specify path explicitly if not using bundled libs
+        // UaParser parser = new UaParser("/path/to/ua-parser-linux-amd64.so");
 
         // Initialize the core
         parser.init("{\"disable_auto_update\": false, \"lru_cache_size\": 1000}");

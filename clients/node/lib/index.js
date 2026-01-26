@@ -43,15 +43,18 @@ class UaParser {
             const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
             let ext = 'so';
             let platform = 'linux';
+            let prefix = 'lib';
 
             if (isWindows) {
                 ext = 'dll';
                 platform = 'windows';
+                prefix = '';
             } else if (isMac) {
                 ext = 'dylib';
                 platform = 'darwin';
+                prefix = 'lib';
             }
-            this.libPath = path.join(__dirname, `ua-parser-${platform}-${arch}.${ext}`);
+            this.libPath = path.join(__dirname, `${prefix}ua-parser-${platform}-${arch}.${ext}`);
         }
 
         try {
@@ -63,15 +66,18 @@ class UaParser {
             const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
             let ext = 'so';
             let platform = 'linux';
+            let prefix = 'lib';
 
             if (isWindows) {
                 ext = 'dll';
                 platform = 'windows';
+                prefix = '';
             } else if (isMac) {
                 ext = 'dylib';
                 platform = 'darwin';
+                prefix = 'lib';
             }
-            const fallbackPath = path.join(process.cwd(), `ua-parser-${platform}-${arch}.${ext}`);
+            const fallbackPath = path.join(process.cwd(), `${prefix}ua-parser-${platform}-${arch}.${ext}`);
             try {
                 this.lib = koffi.load(fallbackPath);
             } catch (e2) {

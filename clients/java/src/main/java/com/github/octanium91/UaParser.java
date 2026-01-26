@@ -35,11 +35,11 @@ public class UaParser {
         String archSuffix = (arch.contains("arm") || arch.contains("aarch64")) ? "arm64" : "amd64";
 
         if (os.contains("win")) {
-            return "ua-parser-windows-" + archSuffix + ".dll";
+            return "ua-parser-windows-" + archSuffix;
         } else if (os.contains("mac") || os.contains("darwin")) {
-            return "./ua-parser-darwin-" + archSuffix + ".dylib";
+            return "ua-parser-darwin-" + archSuffix;
         } else {
-            return "./ua-parser-linux-" + archSuffix + ".so";
+            return "ua-parser-linux-" + archSuffix;
         }
     }
 
