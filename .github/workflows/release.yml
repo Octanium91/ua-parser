@@ -103,7 +103,7 @@ jobs:
             GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm/main.go
             
             # Optimize WASM binary size
-            wasm-opt -Oz ua-parser.wasm -o ua-parser.wasm
+            wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext ua-parser.wasm -o ua-parser.wasm
             
             # In Go 1.24+ wasm_exec.js moved to lib/wasm, earlier it was in misc/wasm
             find $(go env GOROOT) -name wasm_exec.js -exec cp {} . \;
