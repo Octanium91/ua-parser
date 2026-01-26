@@ -12,7 +12,6 @@
     <description>
         High-performance User-Agent parser (Go core via JNA). 
         Features: Client Hints (Sec-CH-UA) priority, LRU caching, auto-updates.
-        See full documentation and examples in the project README.
     </description>
     <url>https://github.com/Octanium91/ua-parser/tree/main/clients/java</url>
 
