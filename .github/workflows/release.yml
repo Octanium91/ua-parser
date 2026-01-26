@@ -128,6 +128,7 @@ jobs:
             ua-parser-darwin-*.dylib
             wasm_exec.js
             *.h
+          if-no-files-found: warn
 
   docker:
     name: Build and Push Docker Image
