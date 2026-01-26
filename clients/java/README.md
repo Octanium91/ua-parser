@@ -40,7 +40,7 @@ repositories {
 <dependency>
     <groupId>com.github.octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>1.1.6</version>
+    <version>1.1.7</version>
 </dependency>
 ```
 
@@ -48,7 +48,7 @@ repositories {
 
 ```gradle
 dependencies {
-    implementation("com.github.octanium91:ua-parser:1.1.6")
+    implementation("com.github.octanium91:ua-parser:1.1.7")
 }
 ```
 

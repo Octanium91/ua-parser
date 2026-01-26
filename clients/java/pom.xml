@@ -6,7 +6,7 @@
 
     <groupId>com.github.octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>1.1.6</version>
+    <version>1.1.7</version>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
@@ -44,6 +44,23 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <source>8</source>
+                    <detectJavaApiLink>false</detectJavaApiLink>
+                </configuration>
             </plugin>
         </plugins>
     </build>
