@@ -8,6 +8,45 @@
     <artifactId>ua-parser</artifactId>
     <version>1.1.7</version>
 
+    <name>Universal User-Agent Parser</name>
+    <description>
+        High-performance User-Agent parser (Go core via JNA). 
+        Features: Client Hints (Sec-CH-UA) priority, LRU caching, auto-updates.
+        Usage: Instantiate 'UaParser', call 'init()', then 'parse()' with JSON payload.
+        See full documentation and examples in the project README.
+    </description>
+    <url>https://github.com/Octanium91/ua-parser/tree/main/clients/java</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>octanium91</id>
+            <name>Octanium91</name>
+            <url>https://github.com/Octanium91</url>
+            <roles>
+                <role>Maintainer</role>
+            </roles>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/Octanium91/ua-parser.git</connection>
+        <developerConnection>scm:git:ssh://github.com:Octanium91/ua-parser.git</developerConnection>
+        <url>https://github.com/Octanium91/ua-parser</url>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/Octanium91/ua-parser/issues</url>
+    </issueManagement>
+
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
