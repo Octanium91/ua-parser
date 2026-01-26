@@ -16,14 +16,19 @@
 - Maintain high test coverage for both Regex and Client Hints logic.
 - Ensure thread safety when handling shared resources (like the parser instance and cache).
 
-## Project Info & Distribution
+## Package Distribution
 - **Official Repository**: [https://github.com/Octanium91/ua-parser](https://github.com/Octanium91/ua-parser)
 - **Multi-Platform Clients**: The project provides official clients for multiple platforms (Go, Python, Node.js, Java) located in the `/clients` directory.
 - **Package Distribution**:
   - All artifacts are primarily published to **GitHub Packages** (Maven for Java, npm for Node.js).
   - Docker images are published to **GitHub Container Registry (ghcr.io)**.
   - Shared libraries and Python wheels are distributed via **GitHub Releases**.
+- **Installation Guides**: All installation documentation must explicitly state that for Node.js and Java, the user must configure their local package manager (npm, Maven) to use the GitHub Packages registry, including authentication steps.
 
 ## Performance & Logging
 - The application is designed for **high performance**; use LRU caching and avoid unnecessary allocations in the hot path.
 - The system must provide **clear logs for resource updates** (e.g., downloading and swapping `regexes.yaml`) to ensure observability of the background updater.
+
+## Git Operations
+- **Restrictions**: The AI assistant is strictly prohibited from performing any Git operations, including `git commit`, `git push`, `git tag`, or creating GitHub releases.
+- **Responsibility**: All version control operations and deployment triggers must be performed manually by the user.

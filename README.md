@@ -21,10 +21,22 @@ We provide official wrappers for major languages that use the core shared librar
 
 - **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser`
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
-- **[Node.js](./clients/node)**: `npm install @octanium91/ua-parser` (GitHub Packages)
+- **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
 - **[Java](./clients/java)**: `com.github.octanium91:ua-parser` (GitHub Packages)
 
-See the respective `README.md` in the `clients/` directory for detailed usage instructions.
+### Package Registry Setup
+
+Since Node.js and Java packages are hosted on **GitHub Packages**, you must configure your package manager to use the GitHub registry. 
+
+Most package managers require a **GitHub Personal Access Token (PAT)** with `read:packages` scope to download packages, even from public repositories.
+
+| Platform | Setup Requirement | Link |
+|----------|-------------------|------|
+| **Node.js** | Create `.npmrc` with registry and PAT | [Node.js Setup](./clients/node#installation) |
+| **Java** | Update `pom.xml` and `settings.xml` | [Java Setup](./clients/java#installation) |
+| **Python** | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
+
+---
 
 ## Go Library Usage
 

@@ -4,12 +4,26 @@ This is the Node.js wrapper for the high-performance Universal User-Agent Parser
 
 ## Installation
 
-Install the package from GitHub Packages:
+The package is hosted on **GitHub Packages**. You need to configure your environment to use this registry.
+
+### 1. Configure Registry
+
+Create or update a `.npmrc` file in your project root:
+
+```text
+@octanium91:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT
+```
+
+> **Note**: Replace `YOUR_GITHUB_PAT` with a [GitHub Personal Access Token](https://github.com/settings/tokens) that has at least `read:packages` scope.
+
+### 2. Install Package
+
 ```bash
 npm install @octanium91/ua-parser
 ```
 
-> **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
+> **Note**: The package automatically includes the required native binaries for Windows, Linux, and macOS (amd64 and arm64).
 
 ## Usage (Node.js)
 
@@ -21,22 +35,73 @@ async function run() {
     const parser = new UaParser();
 
     // Initialize the core
-    await parser.init({ disable_auto_update: false, lru_cache_size: 1000 });
+    await parser.init({ 
+        disable_auto_update: false, 
+        lru_cache_size: 1000 
+    });
 
-    // Parse a User-Agent
+    // Parse a User-Agent with Client Hints for maximum accuracy
     const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
     const headers = {
         "Sec-CH-UA-Platform": '"Windows"',
-        "Sec-CH-UA-Platform-Version": '"13.0.0"'
+        "Sec-CH-UA-Platform-Version": '"13.0.0"',
+        "Sec-CH-UA-Full-Version-List": '"Chromium";v="119.0.6045.105", "Google Chrome";v="119.0.6045.105"'
     };
 
     const result = parser.parse(ua, headers);
 
-    console.log(`OS: ${result.os.name} ${result.os.version}`);
-    console.log(`Browser: ${result.browser.name} ${result.browser.version}`);
+    console.log(`OS: ${result.os.name} ${result.os.version}`); // OS: Windows 11
+    console.log(`Browser: ${result.browser.name} ${result.browser.version}`); // Browser: Chrome 119.0.6045.105
+    console.log(`Category: ${result.category}`); // Category: desktop
 }
 
 run();
+```
+
+## Configuration
+
+The `init(config)` method accepts an optional configuration object:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `disable_auto_update` | `boolean` | `false` | If `true`, background regex updates are disabled. |
+| `lru_cache_size` | `number` | `1000` | Number of entries to keep in the LRU cache. Set to `0` to disable. |
+| `update_url` | `string` | *(official uap-core)* | Custom URL to download `regexes.yaml` from. |
+| `update_interval` | `string` | `"24h"` | Interval for background updates (e.g., `"12h"`, `"1h"`). |
+
+## Result Object Structure
+
+The `parse()` method returns a detailed object:
+
+```json
+{
+  "ua": "Mozilla/5.0 ...",
+  "browser": {
+    "name": "Chrome",
+    "version": "119.0.6045.105",
+    "major": "119",
+    "type": "browser"
+  },
+  "os": {
+    "name": "Windows",
+    "version": "11"
+  },
+  "device": {
+    "model": "Pixel 5",
+    "vendor": "Google",
+    "type": "mobile"
+  },
+  "cpu": {
+    "architecture": "arm64"
+  },
+  "engine": {
+    "name": "Blink",
+    "version": "119.0.6045.105"
+  },
+  "category": "mobile",
+  "is_bot": false,
+  "is_ai_crawler": false
+}
 ```
 
 ## Usage (Browser / Bundlers)

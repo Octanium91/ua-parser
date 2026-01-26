@@ -4,9 +4,41 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ## Installation
 
-### Maven
+The package is hosted on **GitHub Packages**.
 
-Add the dependency to your `pom.xml` (Ensure you have configured GitHub Packages repository):
+### 1. Configure Maven
+
+Add the following to your `pom.xml`:
+
+```xml
+<repositories>
+    <repository>
+        <id>github</id>
+        <url>https://maven.pkg.github.com/octanium91/ua-parser</url>
+        <snapshots>
+            <enabled>true</enabled>
+        </snapshots>
+    </repository>
+</repositories>
+```
+
+### 2. Authentication
+
+GitHub Packages requires authentication to download packages. Add your credentials to your `~/.m2/settings.xml`:
+
+```xml
+<servers>
+    <server>
+        <id>github</id>
+        <username>YOUR_GITHUB_USERNAME</username>
+        <password>YOUR_GITHUB_PAT</password>
+    </server>
+</servers>
+```
+
+> **Note**: Replace `YOUR_GITHUB_PAT` with a [GitHub Personal Access Token](https://github.com/settings/tokens) with `read:packages` scope.
+
+### 3. Add Dependency
 
 ```xml
 <dependency>
