@@ -99,8 +99,8 @@ jobs:
         run: |
           if [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
-            GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
-            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
+            GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
+            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
           elif [ "${{ matrix.goos }}" == "js" ]; then
             echo "Building WebAssembly..."
             # Install wasm-opt (binaryen) for size optimization
@@ -116,9 +116,13 @@ jobs:
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (Cross-compile)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
+            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
           else
-            GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
+            LDFLAGS="-s -w"
+            if [ "${{ matrix.goos }}" == "windows" ]; then
+              LDFLAGS="$LDFLAGS -extldflags=-static"
+            fi
+            GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -ldflags="$LDFLAGS" -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
           fi
 
       - name: Upload Shared Library Artifacts

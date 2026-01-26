@@ -1,4 +1,7 @@
 install:
+  - sudo apt-get update && sudo apt-get install -y gcc-mingw-w64
   - mkdir -p clients/java/src/main/resources/linux-x86-64
-  - go build -buildmode=c-shared -o clients/java/src/main/resources/linux-x86-64/libua-parser.so ./cmd/cshared/main.go
+  - go build -buildmode=c-shared -ldflags="-s -w" -o clients/java/src/main/resources/linux-x86-64/libua-parser.so ./cmd/cshared/main.go
+  - mkdir -p clients/java/src/main/resources/win32-x86-64
+  - GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc go build -buildmode=c-shared -ldflags="-s -w -extldflags=-static" -o clients/java/src/main/resources/win32-x86-64/ua-parser.dll ./cmd/cshared/main.go
   - cd clients/java && mvn clean install -DskipTests

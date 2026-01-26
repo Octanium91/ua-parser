@@ -80,9 +80,22 @@ dependencies {
 
 ### Driver
 
-Native libraries for all supported platforms (**Linux**, **Windows**, **macOS**) are bundled inside the JAR. The library automatically detects the operating system and architecture to load the correct driver using JNA.
+Native libraries for supported platforms are bundled inside the JAR:
+- **Linux**: x86-64, arm64
+- **Windows**: x86-64 (win32-x86-64)
+- **macOS**: x86-64, arm64 (Universal)
 
-> **Note**: You can also manually provide a path to a custom shared library when creating the `UaParser` instance. If you do this, make sure the library name follows the standard convention for your OS (e.g., `libua-parser-linux-amd64.so` on Linux).
+The library automatically detects the operating system and architecture to load the correct driver using JNA.
+
+> **Note**: If you are using **JitPack**, make sure you are using a version that includes the driver for your platform. The GitHub Packages version is recommended for the most complete set of pre-built drivers.
+
+#### Troubleshooting `UnsatisfiedLinkError`
+If you encounter an `UnsatisfiedLinkError`, it usually means the native library for your specific OS/Architecture is missing from the JAR or cannot be loaded due to missing system dependencies.
+- On Windows, ensure you have the Visual C++ Redistributable installed (though Go libs are usually self-contained).
+- You can enable JNA debug logging by setting `-Djna.debug_load=true` to see where it searches for the library.
+
+> **Manual Path**: You can also manually provide a path to a custom shared library when creating the `UaParser` instance:
+> `UaParser parser = new UaParser("/path/to/libua-parser.so");`
 
 ## Usage
 
