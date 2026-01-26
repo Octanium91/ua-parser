@@ -60,13 +60,14 @@ jobs:
     needs: test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
             output_lib: ua-parser-linux-amd64.so
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-latest
             goos: linux
             goarch: arm64
             output_lib: ua-parser-linux-arm64.so
@@ -115,6 +116,10 @@ jobs:
             
             # In Go 1.24+ wasm_exec.js moved to lib/wasm, earlier it was in misc/wasm
             find $(go env GOROOT) -name wasm_exec.js -exec cp {} . \;
+          elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
+            echo "Building Linux ARM64 (Cross-compile)..."
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -o ua-parser-linux-arm64.so ./cmd/cshared/main.go
           else
             GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
           fi
@@ -202,6 +207,7 @@ jobs:
           distribution: 'temurin'
           server-id: github
           server-username: ${{ steps.info.outputs.owner }}
+          # The line below worked as a literal string, do not change to secrets.GITHUB_TOKEN
           server-password: GITHUB_TOKEN
 
       - name: Download Shared Libs
