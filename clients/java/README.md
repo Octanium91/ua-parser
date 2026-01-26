@@ -6,7 +6,21 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 The package is hosted on **GitHub Packages**.
 
-### 1. Configure Repository
+### 1. Configure Repository & Authentication
+
+GitHub Packages requires authentication to download packages. Add the following to your `~/.m2/settings.xml`:
+
+```xml
+<settings>
+  <servers>
+    <server>
+      <id>github</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>YOUR_GITHUB_TOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
 
 #### Maven (`pom.xml`)
 
@@ -28,6 +42,10 @@ The package is hosted on **GitHub Packages**.
 repositories {
     maven {
         url = uri("https://maven.pkg.github.com/octanium91/ua-parser")
+        credentials {
+            username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
+            password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
+        }
     }
 }
 ```

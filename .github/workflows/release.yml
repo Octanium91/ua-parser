@@ -201,7 +201,7 @@ jobs:
           distribution: 'temurin'
           server-id: github
           server-username: ${{ steps.info.outputs.owner }}
-          server-password: GITHUB_TOKEN
+          server-password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Shared Libs
         uses: actions/download-artifact@v4
