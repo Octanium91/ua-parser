@@ -12,10 +12,7 @@ Create or update a `.npmrc` file in your project root:
 
 ```text
 @octanium91:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT
 ```
-
-> **Note**: Replace `YOUR_GITHUB_PAT` with a [GitHub Personal Access Token](https://github.com/settings/tokens) that has at least `read:packages` scope.
 
 ### 2. Install Package
 

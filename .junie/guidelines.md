@@ -23,7 +23,7 @@
   - All artifacts are primarily published to **GitHub Packages** (Maven for Java, npm for Node.js).
   - Docker images are published to **GitHub Container Registry (ghcr.io)**.
   - Shared libraries and Python wheels are distributed via **GitHub Releases**.
-- **Installation Guides**: All installation documentation must explicitly state that for Node.js and Java, the user must configure their local package manager (npm, Maven) to use the GitHub Packages registry, including authentication steps.
+- **Installation Guides**: All installation documentation must explicitly state that for Node.js and Java, the user must configure their local package manager (npm, Maven) to use the GitHub Packages registry. Since the repository is public, authentication is generally not required for downloading packages, but registry configuration is still necessary.
 
 ## Performance & Logging
 - The application is designed for **high performance**; use LRU caching and avoid unnecessary allocations in the hot path.

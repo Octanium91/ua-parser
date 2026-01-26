@@ -6,9 +6,9 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 The package is hosted on **GitHub Packages**.
 
-### 1. Configure Maven
+### 1. Configure Repository
 
-Add the following to your `pom.xml`:
+#### Maven (`pom.xml`)
 
 ```xml
 <repositories>
@@ -22,23 +22,19 @@ Add the following to your `pom.xml`:
 </repositories>
 ```
 
-### 2. Authentication
+#### Gradle (`build.gradle`)
 
-GitHub Packages requires authentication to download packages. Add your credentials to your `~/.m2/settings.xml`:
-
-```xml
-<servers>
-    <server>
-        <id>github</id>
-        <username>YOUR_GITHUB_USERNAME</username>
-        <password>YOUR_GITHUB_PAT</password>
-    </server>
-</servers>
+```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/octanium91/ua-parser")
+    }
+}
 ```
 
-> **Note**: Replace `YOUR_GITHUB_PAT` with a [GitHub Personal Access Token](https://github.com/settings/tokens) with `read:packages` scope.
+### 2. Add Dependency
 
-### 3. Add Dependency
+#### Maven (`pom.xml`)
 
 ```xml
 <dependency>
@@ -46,6 +42,14 @@ GitHub Packages requires authentication to download packages. Add your credentia
     <artifactId>ua-parser</artifactId>
     <version>1.1.6</version>
 </dependency>
+```
+
+#### Gradle (`build.gradle`)
+
+```gradle
+dependencies {
+    implementation("com.github.octanium91:ua-parser:1.1.6")
+}
 ```
 
 ### Driver

@@ -28,12 +28,12 @@ We provide official wrappers for major languages that use the core shared librar
 
 Since Node.js and Java packages are hosted on **GitHub Packages**, you must configure your package manager to use the GitHub registry. 
 
-Most package managers require a **GitHub Personal Access Token (PAT)** with `read:packages` scope to download packages, even from public repositories.
+As the repository is public, you can download packages without authentication. However, you still need to tell your package manager where to find them.
 
 | Platform | Setup Requirement | Link |
 |----------|-------------------|------|
-| **Node.js** | Create `.npmrc` with registry and PAT | [Node.js Setup](./clients/node#installation) |
-| **Java** | Update `pom.xml` and `settings.xml` | [Java Setup](./clients/java#installation) |
+| **Node.js** | Create `.npmrc` with registry | [Node.js Setup](./clients/node#installation) |
+| **Java** | Update `pom.xml` or `build.gradle` | [Java Setup](./clients/java#installation) |
 | **Python** | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
 ---
