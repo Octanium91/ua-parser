@@ -98,7 +98,8 @@ jobs:
           elif [ "${{ matrix.goos }}" == "js" ]; then
             echo "Building WebAssembly..."
             GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -o ua-parser.wasm ./cmd/wasm/main.go
-            cp $(go env GOROOT)/misc/wasm/wasm_exec.js .
+            # In Go 1.24+ wasm_exec.js moved to lib/wasm, earlier it was in misc/wasm
+            find $(go env GOROOT) -name wasm_exec.js -exec cp {} . \;
           else
             GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
           fi
