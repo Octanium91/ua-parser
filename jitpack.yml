@@ -1,0 +1,2 @@
+install:
+  - cd clients/java && mvn clean install -DskipTests

@@ -4,9 +4,44 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ## Installation
 
+### JitPack
+
+Alternatively, you can use **JitPack** to include the library directly from GitHub.
+
+#### Maven (`pom.xml`)
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.octanium91</groupId>
+        <artifactId>ua-parser</artifactId>
+        <version>TAG</version>
+    </dependency>
+</dependencies>
+```
+
+#### Gradle (`build.gradle`)
+
+```gradle
+repositories {
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.octanium91:ua-parser:TAG'
+}
+```
+
 ### GitHub Packages
 
-The package is hosted on **GitHub Packages**.
+The package is also hosted on **GitHub Packages**. Note that you may need to configure your `settings.xml` or `build.gradle` to authenticate with GitHub Packages.
 
 #### Maven (`pom.xml`)
 
@@ -20,7 +55,7 @@ The package is hosted on **GitHub Packages**.
 
 <dependencies>
     <dependency>
-        <groupId>com.github.octanium91.ua-parser</groupId>
+        <groupId>com.github.octanium91</groupId>
         <artifactId>ua-parser</artifactId>
         <version>LATEST_VERSION</version>
     </dependency>
@@ -37,7 +72,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.octanium91.ua-parser:ua-parser:LATEST_VERSION")
+    implementation("com.github.octanium91:ua-parser:LATEST_VERSION")
 }
 ```
 
