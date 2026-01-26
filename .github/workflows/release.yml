@@ -203,6 +203,12 @@ jobs:
           server-username: ${{ steps.info.outputs.owner }}
           server-password: GITHUB_TOKEN
 
+      - name: Download Shared Libs
+        uses: actions/download-artifact@v4
+        with:
+          path: clients/java/src/main/resources
+          merge-multiple: true
+
       - name: Update Maven Version & Group ID
         run: |
           OWNER="${{ steps.info.outputs.owner }}"
