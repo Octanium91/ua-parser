@@ -73,6 +73,12 @@ jobs:
             goos: darwin
             goarch: "universal"
             output_lib: ua-parser-darwin.dylib
+          # WebAssembly build
+          - os: ubuntu-latest
+            goos: js
+            goarch: wasm
+            output_lib: ua-parser.wasm
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -89,6 +95,10 @@ jobs:
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o ua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o ua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
+          elif [ "${{ matrix.goos }}" == "js" ]; then
+            echo "Building WebAssembly..."
+            GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -o ua-parser.wasm ./cmd/wasm/main.go
+            cp $(go env GOROOT)/misc/wasm/wasm_exec.js .
           else
             GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
           fi
@@ -100,6 +110,7 @@ jobs:
           path: |
             ${{ matrix.output_lib }}
             ua-parser-darwin-*.dylib
+            wasm_exec.js
             *.h
 
   docker:
@@ -329,6 +340,8 @@ jobs:
             release-artifacts/ua-parser-darwin-amd64.h
             release-artifacts/ua-parser-darwin-arm64.dylib
             release-artifacts/ua-parser-darwin-arm64.h
+            release-artifacts/ua-parser.wasm
+            release-artifacts/wasm_exec.js
             release-artifacts/*.whl
           body: |
             ## Universal User-Agent Parser Release ${{ github.ref_name }}
@@ -339,6 +352,7 @@ jobs:
             - **ua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+            - **ua-parser.wasm / wasm_exec.js**: WebAssembly module and loader for Browser support.
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
             ### Package Managers (GitHub Packages)

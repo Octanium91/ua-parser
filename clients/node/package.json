@@ -9,6 +9,8 @@
     "lib/*.dll",
     "lib/*.dylib",
     "lib/*.h",
+    "lib/*.wasm",
+    "lib/wasm_exec.js",
     "README.md"
   ],
   "scripts": {
