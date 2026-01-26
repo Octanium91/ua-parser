@@ -20,7 +20,7 @@ Alternatively, you can use **JitPack** to include the library directly from GitH
 
 <dependencies>
     <dependency>
-        <groupId>com.github.octanium91</groupId>
+        <groupId>com.github.Octanium91</groupId>
         <artifactId>ua-parser</artifactId>
         <version>TAG</version>
     </dependency>
@@ -31,11 +31,12 @@ Alternatively, you can use **JitPack** to include the library directly from GitH
 
 ```gradle
 repositories {
+    mavenCentral()
     maven { url 'https://jitpack.io' }
 }
 
 dependencies {
-    implementation 'com.github.octanium91:ua-parser:TAG'
+    implementation 'com.github.Octanium91:ua-parser:TAG'
 }
 ```
 
@@ -49,13 +50,13 @@ The package is also hosted on **GitHub Packages**. Note that you may need to con
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/octanium91/ua-parser</url>
+        <url>https://maven.pkg.github.com/Octanium91/ua-parser</url>
     </repository>
 </repositories>
 
 <dependencies>
     <dependency>
-        <groupId>com.github.octanium91</groupId>
+        <groupId>com.github.Octanium91</groupId>
         <artifactId>ua-parser</artifactId>
         <version>LATEST_VERSION</version>
     </dependency>
@@ -66,19 +67,20 @@ The package is also hosted on **GitHub Packages**. Note that you may need to con
 
 ```gradle
 repositories {
+    mavenCentral()
     maven {
-        url = uri("https://maven.pkg.github.com/octanium91/ua-parser")
+        url = uri("https://maven.pkg.github.com/Octanium91/ua-parser")
     }
 }
 
 dependencies {
-    implementation("com.github.octanium91:ua-parser:LATEST_VERSION")
+    implementation("com.github.Octanium91:ua-parser:LATEST_VERSION")
 }
 ```
 
 ### Driver
 
-Ensure you have the shared library (`ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`, `ua-parser-windows-amd64.dll`, `ua-parser-darwin-amd64.dylib` or `ua-parser-darwin-arm64.dylib`) from the [GitHub Releases](https://github.com/octanium91/ua-parser/releases).
+Ensure you have the shared library (`ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`, `ua-parser-windows-amd64.dll`, `ua-parser-darwin-amd64.dylib` or `ua-parser-darwin-arm64.dylib`) from the [GitHub Releases](https://github.com/Octanium91/ua-parser/releases).
 
 > **Note**: Native libraries are bundled inside the JAR, but you can also manually place the shared library in your working directory if needed.
 

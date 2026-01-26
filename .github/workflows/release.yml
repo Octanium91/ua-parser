@@ -193,8 +193,8 @@ jobs:
       - name: Get Info
         id: info
         run: |
-          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
-          echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+          echo "owner=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_OUTPUT
+          echo "repo=${GITHUB_REPOSITORY}" >> $GITHUB_OUTPUT
           echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Set up JDK 8
@@ -225,10 +225,10 @@ jobs:
           # 1. Update version
           mvn versions:set -DnewVersion=$VERSION -f $POM_FILE -DgenerateBackupPoms=false
 
-          # 2. Change GroupId to lowercase
+          # 2. Update GroupId
           sed -i "s|<groupId>com.github.[^<]*</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE
 
-          # 3. Change Repository URL to lowercase
+          # 3. Update Repository URL
           sed -i "s|<url>https://maven.pkg.github.com/.*</url>|<url>https://maven.pkg.github.com/$REPO</url>|g" $POM_FILE
           
           echo "Updated POM.xml:"
@@ -382,7 +382,7 @@ jobs:
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
             ### Package Managers (GitHub Packages)
-            - **Java (Maven)**: `com.github.${{ steps.prep.outputs.owner }}:ua-parser`
+            - **Java (Maven)**: `com.github.${{ github.repository_owner }}:ua-parser`
             - **Node.js (npm)**: `@${{ steps.prep.outputs.owner }}/ua-parser`
             
             ### Docker Image

@@ -6,7 +6,7 @@ This is the Python wrapper for the high-performance Universal User-Agent Parser.
 
 This package is distributed via GitHub Releases.
 
-1.  Go to the [Releases Page](https://github.com/octanium91/ua-parser/releases).
+1.  Go to the [Releases Page](https://github.com/Octanium91/ua-parser/releases).
 2.  Download the `.whl` file from the latest release (e.g., `ua_parser_core-1.1.7-py3-none-any.whl`).
 3.  Install it using pip:
     ```bash

@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.github.octanium91</groupId>
+    <groupId>com.github.Octanium91</groupId>
     <artifactId>ua-parser</artifactId>
     <version>1.1.7</version> <!-- Placeholder, managed by CI -->
 
@@ -47,7 +47,7 @@
         <repository>
             <id>github</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/octanium91/ua-parser</url>
+            <url>https://maven.pkg.github.com/Octanium91/ua-parser</url>
         </repository>
     </distributionManagement>
 

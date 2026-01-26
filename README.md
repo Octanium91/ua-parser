@@ -22,7 +22,7 @@ We provide official wrappers for major languages that use the core shared librar
 - **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser`
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
 - **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
-- **[Java](./clients/java)**: `com.github.octanium91:ua-parser` (JitPack, GitHub Packages)
+- **[Java](./clients/java)**: `com.github.Octanium91:ua-parser` (JitPack, GitHub Packages)
 
 ### Package Registry Setup
 
