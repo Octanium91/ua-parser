@@ -67,6 +67,18 @@ To achieve high accuracy (especially for Windows 11 and full browser versions), 
 
 ## REST API Server
 
+### Running Locally
+
+To run the server locally without Docker:
+
+```bash
+# Generate required JSON resources
+go generate ./pkg/core/...
+
+# Start the server
+go run ./cmd/server/main.go
+```
+
 ### Running with Docker
 
 ```bash

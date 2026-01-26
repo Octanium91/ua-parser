@@ -1,5 +1,7 @@
 package core
 
+//go:generate go run ../../cmd/gen-json/main.go
+
 import (
 	_ "embed"
 	"encoding/json"
