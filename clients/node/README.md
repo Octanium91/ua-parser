@@ -39,44 +39,53 @@ async function run() {
 run();
 ```
 
-## Usage (Browser)
+## Usage (Browser / Bundlers)
 
-The package supports WebAssembly for use in browser environments.
+The package supports WebAssembly and is compatible with modern bundlers like Webpack and Vite.
 
-### 1. Setup
-Copy `ua-parser.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
+### Modern Bundlers (React, Vue, Vite, Webpack)
 
-### 2. Implementation
-Include `wasm_exec.js` in your HTML and use the parser:
+When using a bundler, the parser automatically attempts to resolve `wasm_exec.js` and `ua-parser.wasm` assets. You can use it directly without manual setup:
 
-```html
-<script src="/wasm_exec.js"></script>
-<script type="module">
-    import { UaParser } from 'https://cdn.jsdelivr.net/npm/@octanium91/ua-parser/lib/index.js'; // Or use your bundler
+```javascript
+import { UaParser } from '@octanium91/ua-parser';
 
-    async function init() {
-        const parser = new UaParser('/ua-parser.wasm');
-        await parser.init();
+async function init() {
+    const parser = new UaParser();
+    await parser.init();
 
-        const result = parser.parse(navigator.userAgent);
-        console.log(result);
-    }
-
-    init();
-</script>
+    const result = parser.parse(navigator.userAgent);
+    console.log(result);
+}
 ```
+
+### Manual Setup (Vanilla JS / CDN)
+
+If you are not using a bundler or the automatic resolution fails:
+
+1. Copy `ua-parser.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
+2. Include `wasm_exec.js` in your HTML:
+   ```html
+   <script src="/wasm_exec.js"></script>
+   ```
+3. Initialize the parser providing the URL to the WASM file:
+   ```javascript
+   const parser = new UaParser('/ua-parser.wasm');
+   await parser.init();
+   ```
 
 ### React Example
 ```javascript
 import { useEffect, useState } from 'react';
-import UaParser from '@octanium91/ua-parser';
+import { UaParser } from '@octanium91/ua-parser';
 
 function App() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
     async function parse() {
-      const parser = new UaParser('/ua-parser.wasm');
+      // In modern bundlers, no arguments are needed
+      const parser = new UaParser();
       await parser.init();
       setResult(parser.parse(navigator.userAgent));
     }

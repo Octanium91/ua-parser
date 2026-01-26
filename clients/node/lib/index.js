@@ -94,11 +94,28 @@ class UaParser {
 
     async _initWasm(config) {
         if (typeof Go === 'undefined') {
+            try {
+                require('./wasm_exec.js');
+            } catch (e) {
+                // Ignore if not in a bundler environment
+            }
+        }
+
+        if (typeof Go === 'undefined') {
             throw new Error('wasm_exec.js must be loaded before initializing UaParser in the browser');
         }
 
         const go = new Go();
-        const wasmPath = this.libPath || '/ua-parser.wasm';
+        
+        let wasmPath = this.libPath;
+        if (!wasmPath) {
+            try {
+                const resolved = require('./ua-parser.wasm');
+                wasmPath = resolved.default || resolved;
+            } catch (e) {
+                wasmPath = '/ua-parser.wasm';
+            }
+        }
         
         let result;
         if (WebAssembly.instantiateStreaming) {
