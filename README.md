@@ -22,7 +22,7 @@ We provide official wrappers for major languages that use the core shared librar
 - **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser`
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
 - **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
-- **[Java](./clients/java)**: `com.github.octanium91.ua-parser:ua-parser` (JitPack, GitHub Packages)
+- **[Java](./clients/java)**: `com.github.octanium91.ua-parser:ua-parser` (GitHub Packages)
 
 ### Package Registry Setup
 
@@ -31,7 +31,7 @@ For Node.js and Java, you must configure your package manager to find the packag
 | Platform | Setup Requirement | Link |
 |----------|-------------------|------|
 | **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
-| **Java** | Add **JitPack** (Recommended) or GitHub repository | [Java Setup](./clients/java#installation) |
+| **Java** | Configure GitHub repository | [Java Setup](./clients/java#installation) |
 | **Python** | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
 ---

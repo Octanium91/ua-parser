@@ -4,44 +4,9 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ## Installation
 
-### Option 1: JitPack (Recommended - No Auth Required)
+### GitHub Packages
 
-The easiest way to use this library is via **JitPack**. It does not require any registry configuration or authentication.
-
-#### Maven (`pom.xml`)
-
-```xml
-<repositories>
-    <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
-    </repository>
-</repositories>
-
-<dependencies>
-    <dependency>
-        <groupId>com.github.octanium91.ua-parser</groupId>
-        <artifactId>ua-parser</artifactId>
-        <version>LATEST_VERSION</version>
-    </dependency>
-</dependencies>
-```
-
-#### Gradle (`build.gradle`)
-
-```gradle
-repositories {
-    maven { url 'https://jitpack.io' }
-}
-
-dependencies {
-    implementation 'com.github.octanium91.ua-parser:ua-parser:LATEST_VERSION'
-}
-```
-
-### Option 2: GitHub Packages
-
-The package is also hosted on **GitHub Packages**.
+The package is hosted on **GitHub Packages**.
 
 #### Maven (`pom.xml`)
 

@@ -14,7 +14,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache: true
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
       - name: Run Tests
@@ -29,7 +28,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache: true
       
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
@@ -90,7 +88,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache: true
       
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
