@@ -22,25 +22,11 @@ public class UaParser {
     private final UaParserLib lib;
 
     public UaParser() {
-        this(getDefaultLibPath());
+        this("ua-parser");
     }
 
     public UaParser(String libPath) {
         this.lib = Native.load(libPath, UaParserLib.class);
-    }
-
-    private static String getDefaultLibPath() {
-        String os = System.getProperty("os.name").toLowerCase();
-        String arch = System.getProperty("os.arch").toLowerCase();
-        String archSuffix = (arch.contains("arm") || arch.contains("aarch64")) ? "arm64" : "amd64";
-
-        if (os.contains("win")) {
-            return "ua-parser-windows-" + archSuffix;
-        } else if (os.contains("mac") || os.contains("darwin")) {
-            return "ua-parser-darwin-" + archSuffix;
-        } else {
-            return "ua-parser-linux-" + archSuffix;
-        }
     }
 
     /**

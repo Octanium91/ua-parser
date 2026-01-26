@@ -1,4 +1,4 @@
 install:
-  - mkdir -p clients/java/src/main/resources
-  - go build -buildmode=c-shared -o clients/java/src/main/resources/libua-parser-linux-amd64.so ./cmd/cshared/main.go
+  - mkdir -p clients/java/src/main/resources/linux-x86-64
+  - go build -buildmode=c-shared -o clients/java/src/main/resources/linux-x86-64/libua-parser.so ./cmd/cshared/main.go
   - cd clients/java && mvn clean install -DskipTests
