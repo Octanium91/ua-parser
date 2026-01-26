@@ -1,0 +1,429 @@
+commit d1abc3af198c7d862deecd24bdaa0bd3bb94a1f8 (HEAD -> main, tag: v0.0.6, tag: v0.0.5, origin/main)
+Author: octan <octanium91@gmail.com>
+Date:   Mon Jan 26 02:59:00 2026 +0200
+    Implement WebAssembly support for Browser and isomorphic Node.js client
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index edc5839..4b3efcf 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -73,6 +73,12 @@ jobs:
+             goos: darwin
+             goarch: "universal"
+             output_lib: ua-parser-darwin.dylib
++          # WebAssembly build
++          - os: ubuntu-latest
++            goos: js
++            goarch: wasm
++            output_lib: ua-parser.wasm
++
+     steps:
+       - uses: actions/checkout@v4
+       - uses: actions/setup-go@v5
+@@ -89,6 +95,10 @@ jobs:
+             echo "Building macOS Universal..."
+             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o ua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
+             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -o ua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
++          elif [ "${{ matrix.goos }}" == "js" ]; then
++            echo "Building WebAssembly..."
++            GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -o ua-parser.wasm ./cmd/wasm/main.go
++            cp $(go env GOROOT)/misc/wasm/wasm_exec.js .
+           else
+             GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -buildmode=c-shared -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
+           fi
+@@ -100,6 +110,7 @@ jobs:
+           path: |
+             ${{ matrix.output_lib }}
+             ua-parser-darwin-*.dylib
++            wasm_exec.js
+             *.h
+
+   docker:
+@@ -329,6 +340,8 @@ jobs:
+             release-artifacts/ua-parser-darwin-amd64.h
+             release-artifacts/ua-parser-darwin-arm64.dylib
+             release-artifacts/ua-parser-darwin-arm64.h
++            release-artifacts/ua-parser.wasm
++            release-artifacts/wasm_exec.js
+             release-artifacts/*.whl
+           body: |
+             ## Universal User-Agent Parser Release ${{ github.ref_name }}
+@@ -339,6 +352,7 @@ jobs:
+             - **ua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
+             - **ua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
++            - **ua-parser.wasm / wasm_exec.js**: WebAssembly module and loader for Browser support.
+             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
+
+             ### Package Managers (GitHub Packages)
+diff --git a/clients/node/README.md b/clients/node/README.md
+index 8b4c657..124174f 100644
+--- a/clients/node/README.md
++++ b/clients/node/README.md
+@@ -11,28 +11,84 @@ npm install @octanium91/ua-parser
+
+ > **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
+
+-## Usage
++## Usage (Node.js)
+
+ ```javascript
+ const UaParser = require('@octanium91/ua-parser');
+
+-// Initialize the parser
+-const parser = new UaParser();
++async function run() {
++    // Initialize the parser
++    const parser = new UaParser();
+
+-// Initialize the core
+-parser.init({ disable_auto_update: false, lru_cache_size: 1000 });
++    // Initialize the core
++    await parser.init({ disable_auto_update: false, lru_cache_size: 1000 });
+
+-// Parse a User-Agent
+-const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
+-const headers = {
+-    "Sec-CH-UA-Platform": '"Windows"',
+-    "Sec-CH-UA-Platform-Version": '"13.0.0"'
+-};
++    // Parse a User-Agent
++    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
++    const headers = {
++        "Sec-CH-UA-Platform": '"Windows"',
++        "Sec-CH-UA-Platform-Version": '"13.0.0"'
++    };
+
+-const result = parser.parse(ua, headers);
++    const result = parser.parse(ua, headers);
+
+-console.log(`OS: ${result.os.name} ${result.os.version}`);
+-console.log(`Browser: ${result.browser.name} ${result.browser.version}`);
++    console.log(`OS: ${result.os.name} ${result.os.version}`);
++    console.log(`Browser: ${result.browser.name} ${result.browser.version}`);
++}
++
++run();
++```
++
++## Usage (Browser)
++
++The package supports WebAssembly for use in browser environments.
++
++### 1. Setup
++Copy `ua-parser.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
++
++### 2. Implementation
++Include `wasm_exec.js` in your HTML and use the parser:
++
++```html
++<script src="/wasm_exec.js"></script>
++<script type="module">
++    import { UaParser } from 'https://cdn.jsdelivr.net/npm/@octanium91/ua-parser/lib/index.js'; // Or use your bundler
++
++    async function init() {
++        const parser = new UaParser('/ua-parser.wasm');
++        await parser.init();
++
++        const result = parser.parse(navigator.userAgent);
++        console.log(result);
++    }
++
++    init();
++</script>
++```
++
++### React Example
++```javascript
++import { useEffect, useState } from 'react';
++import UaParser from '@octanium91/ua-parser';
++
++function App() {
++  const [result, setResult] = useState(null);
++
++  useEffect(() => {
++    async function parse() {
++      const parser = new UaParser('/ua-parser.wasm');
++      await parser.init();
++      setResult(parser.parse(navigator.userAgent));
++    }
++    parse();
++  }, []);
++
++  return (
++    <div>
++      {result && <pre>{JSON.stringify(result, null, 2)}</pre>}
++    </div>
++  );
++}
+ ```
+
+ ## Why Koffi?
+diff --git a/clients/node/lib/index.js b/clients/node/lib/index.js
+index fd35222..daf046a 100644
+--- a/clients/node/lib/index.js
++++ b/clients/node/lib/index.js
+@@ -1,12 +1,43 @@
+-const koffi = require('koffi');
+-const path = require('path');
++const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
++
++let koffi;
++let path;
++if (!isBrowser) {
++    koffi = require('koffi');
++    path = require('path');
++}
+
+ class UaParser {
+     /**
+-     * @param {string} [libPath] Path to the shared library (.so or .dll)
++     * @param {string} [libPath] Path to the shared library (.so, .dll, .dylib) or .wasm file URL (for browser)
+      */
+     constructor(libPath) {
+-        if (!libPath) {
++        this.libPath = libPath;
++        this.isInitialized = false;
++        this.isWasm = isBrowser;
++        this.lib = null;
++    }
++
++    /**
++     * Initializes the parser. In browser, this loads the WebAssembly module.
++     * @param {Object} [config]
++     * @param {boolean} [config.disable_auto_update]
++     * @param {number} [config.lru_cache_size]
++     * @returns {Promise<void>|void}
++     */
++    async init(config = {}) {
++        if (this.isInitialized) return;
++
++        if (isBrowser) {
++            await this._initWasm(config);
++        } else {
++            this._initNode(config);
++        }
++        this.isInitialized = true;
++    }
++
++    _initNode(config) {
++        if (!this.libPath) {
+             const isWindows = process.platform === 'win32';
+             const isMac = process.platform === 'darwin';
+             const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+@@ -20,11 +51,11 @@ class UaParser {
+                 ext = 'dylib';
+                 platform = 'darwin';
+             }
+-            libPath = path.join(__dirname, `ua-parser-${platform}-${arch}.${ext}`);
++            this.libPath = path.join(__dirname, `ua-parser-${platform}-${arch}.${ext}`);
+         }
+
+         try {
+-            this.lib = koffi.load(libPath);
++            this.lib = koffi.load(this.libPath);
+         } catch (e) {
+             // Fallback to current working directory
+             const isWindows = process.platform === 'win32';
+@@ -44,28 +75,14 @@ class UaParser {
+             try {
+                 this.lib = koffi.load(fallbackPath);
+             } catch (e2) {
+-                throw new Error(`Failed to load shared library from ${libPath} or ${fallbackPath}`);
++                throw new Error(`Failed to load shared library from ${this.libPath} or ${fallbackPath}`);
+             }
+         }
+-
+-        // Define functions using koffi
+-        // Go: func Init(configJSON *C.char) *C.char
++
+         this.initFunc = this.lib.func('Init', 'void *', ['string']);
+-
+-        // Go: func Parse(payloadJSON *C.char) *C.char
+         this.parseFunc = this.lib.func('Parse', 'void *', ['string']);
+-
+-        // Go: func FreeString(ptr *C.char)
+         this.freeFunc = this.lib.func('FreeString', 'void', ['void *']);
+-    }
+
+-    /**
+-     * Initializes the parser with optional configuration.
+-     * @param {Object} [config]
+-     * @param {boolean} [config.disable_auto_update]
+-     * @param {number} [config.lru_cache_size]
+-     */
+-    init(config = {}) {
+         const configJson = JSON.stringify(config);
+         const errPtr = this.initFunc(configJson);
+         if (errPtr) {
+@@ -75,6 +92,32 @@ class UaParser {
+         }
+     }
+
++    async _initWasm(config) {
++        if (typeof Go === 'undefined') {
++            throw new Error('wasm_exec.js must be loaded before initializing UaParser in the browser');
++        }
++
++        const go = new Go();
++        const wasmPath = this.libPath || '/ua-parser.wasm';
++
++        let result;
++        if (WebAssembly.instantiateStreaming) {
++            result = await WebAssembly.instantiateStreaming(fetch(wasmPath), go.importObject);
++        } else {
++            const response = await fetch(wasmPath);
++            const bytes = await response.arrayBuffer();
++            result = await WebAssembly.instantiate(bytes, go.importObject);
++        }
++
++        go.run(result.instance);
++
++        const configJson = JSON.stringify(config);
++        const err = globalThis.initUA(configJson);
++        if (err) {
++            throw new Error(`Failed to initialize Wasm parser: ${err}`);
++        }
++    }
++
+     /**
+      * Parses a User-Agent string and optional Client Hint headers.
+      * @param {string} ua User-Agent string
+@@ -82,19 +125,38 @@ class UaParser {
+      * @returns {Object} Parsed result
+      */
+     parse(ua, headers = {}) {
++        if (!this.isInitialized) {
++            throw new Error('Parser not initialized. Call init() first.');
++        }
++
+         const payload = JSON.stringify({ ua, headers });
+-        const resPtr = this.parseFunc(payload);
+-        if (resPtr) {
+-            const resStr = koffi.decode(resPtr, 'string');
+-            this.freeFunc(resPtr);
++
++        if (isBrowser) {
++            const resStr = globalThis.parseUA(payload);
+             const result = JSON.parse(resStr);
+             if (result.error) {
+                 throw new Error(result.error);
+             }
+             return result;
++        } else {
++            const resPtr = this.parseFunc(payload);
++            if (resPtr) {
++                const resStr = koffi.decode(resPtr, 'string');
++                this.freeFunc(resPtr);
++                const result = JSON.parse(resStr);
++                if (result.error) {
++                    throw new Error(result.error);
++                }
++                return result;
++            }
+         }
+         return null;
+     }
+ }
+
+-module.exports = UaParser;
++if (typeof module !== 'undefined' && module.exports) {
++    module.exports = UaParser;
++}
++if (isBrowser) {
++    globalThis.UaParser = UaParser;
++}
+diff --git a/clients/node/package.json b/clients/node/package.json
+index e9791b1..302da03 100644
+--- a/clients/node/package.json
++++ b/clients/node/package.json
+@@ -9,6 +9,8 @@
+     "lib/*.dll",
+     "lib/*.dylib",
+     "lib/*.h",
++    "lib/*.wasm",
++    "lib/wasm_exec.js",
+     "README.md"
+   ],
+   "scripts": {
+diff --git a/cmd/wasm/main.go b/cmd/wasm/main.go
+new file mode 100644
+index 0000000..4eb8d64
+--- /dev/null
++++ b/cmd/wasm/main.go
+@@ -0,0 +1,76 @@
++package main
++
++import (
++       "encoding/json"
++       "syscall/js"
++
++       "github.com/Octanium91/ua-parser/pkg/core"
++)
++
++var parser *core.Parser
++
++func initUA(this js.Value, args []js.Value) interface{} {
++       if len(args) < 1 {
++               return "Missing configuration"
++       }
++
++       configJSON := args[0].String()
++       var cfg core.Config
++       if configJSON != "" && configJSON != "undefined" && configJSON != "null" {
++               err := json.Unmarshal([]byte(configJSON), &cfg)
++               if err != nil {
++                       return "Failed to unmarshal config: " + err.Error()
++               }
++       }
++
++       if cfg.LRUCacheSize == 0 {
++               cfg.LRUCacheSize = 1000
++       }
++
++       // For Wasm, we might want to disable auto-update by default if it's running in a restricted environment,
++       // but we'll follow the provided config.
++       p, err := core.New(cfg)
++       if err != nil {
++               return "Failed to initialize parser: " + err.Error()
++       }
++       parser = p
++       return nil
++}
++
++func parseUA(this js.Value, args []js.Value) interface{} {
++       if parser == nil {
++               return `{"error": "Parser not initialized"}`
++       }
++
++       if len(args) < 1 {
++               return `{"error": "Missing payload"}`
++       }
++
++       payloadJSON := args[0].String()
++       var payload struct {
++               UA      string            `json:"ua"`
++               Headers map[string]string `json:"headers"`
++       }
++
++       err := json.Unmarshal([]byte(payloadJSON), &payload)
++       if err != nil {
++               return `{"error": "Invalid payload: ` + err.Error() + `"}`
++       }
++
++       result := parser.Parse(payload.UA, payload.Headers)
++       resBytes, err := json.Marshal(result)
++       if err != nil {
++               return `{"error": "Failed to marshal result"}`
++       }
++
++       return string(resBytes)
++}
++
++func main() {
++       c := make(chan struct{}, 0)
++
++       js.Global().Set("initUA", js.FuncOf(initUA))
++       js.Global().Set("parseUA", js.FuncOf(parseUA))
++
++       <-c
++}
