@@ -7,10 +7,10 @@ This is the Python wrapper for the high-performance Universal User-Agent Parser.
 This package is distributed via GitHub Releases.
 
 1.  Go to the [Releases Page](https://github.com/octanium91/ua-parser/releases).
-2.  Download the `.whl` file from the latest release (e.g., `ua_parser_core-1.1.2-py3-none-any.whl`).
+2.  Download the `.whl` file from the latest release (e.g., `ua_parser_core-1.1.3-py3-none-any.whl`).
 3.  Install it using pip:
     ```bash
-    pip install ./ua_parser_core-1.1.2-py3-none-any.whl
+    pip install ./ua_parser_core-1.1.3-py3-none-any.whl
     ```
 
 > **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
