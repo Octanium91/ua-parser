@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="ua-parser-core",
-    version="1.1.7",
+    version="1.1.7",  # Placeholder, managed by CI
     packages=find_packages(),
     package_data={
         "uaparser": ["*.so", "*.dll", "*.dylib", "*.h"],

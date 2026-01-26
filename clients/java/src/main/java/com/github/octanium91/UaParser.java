@@ -1,4 +1,4 @@
-package com.github.uaparser;
+package com.github.octanium91;
 
 import com.sun.jna.Library;
 import com.sun.jna.Native;

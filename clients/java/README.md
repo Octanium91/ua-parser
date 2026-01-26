@@ -4,23 +4,9 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ## Installation
 
-The package is hosted on **GitHub Packages**.
+The package is hosted on **GitHub Packages**. Since the repository is public, you don't need authentication to download the package.
 
-### 1. Configure Repository & Authentication
-
-GitHub Packages requires authentication to download packages. Add the following to your `~/.m2/settings.xml`:
-
-```xml
-<settings>
-  <servers>
-    <server>
-      <id>github</id>
-      <username>YOUR_GITHUB_USERNAME</username>
-      <password>YOUR_GITHUB_TOKEN</password>
-    </server>
-  </servers>
-</settings>
-```
+### 1. Configure Repository
 
 #### Maven (`pom.xml`)
 
@@ -29,9 +15,6 @@ GitHub Packages requires authentication to download packages. Add the following 
     <repository>
         <id>github</id>
         <url>https://maven.pkg.github.com/octanium91/ua-parser</url>
-        <snapshots>
-            <enabled>true</enabled>
-        </snapshots>
     </repository>
 </repositories>
 ```
@@ -42,10 +25,6 @@ GitHub Packages requires authentication to download packages. Add the following 
 repositories {
     maven {
         url = uri("https://maven.pkg.github.com/octanium91/ua-parser")
-        credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR")
-            password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
-        }
     }
 }
 ```
@@ -58,7 +37,7 @@ repositories {
 <dependency>
     <groupId>com.github.octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>1.1.7</version>
+    <version>LATEST_VERSION</version>
 </dependency>
 ```
 
@@ -66,7 +45,7 @@ repositories {
 
 ```gradle
 dependencies {
-    implementation("com.github.octanium91:ua-parser:1.1.7")
+    implementation("com.github.octanium91:ua-parser:LATEST_VERSION")
 }
 ```
 
@@ -74,10 +53,12 @@ dependencies {
 
 Ensure you have the shared library (`ua-parser-linux-amd64.so`, `ua-parser-linux-arm64.so`, `ua-parser-windows-amd64.dll`, `ua-parser-darwin-amd64.dylib` or `ua-parser-darwin-arm64.dylib`) from the [GitHub Releases](https://github.com/octanium91/ua-parser/releases).
 
+> **Note**: Native libraries are bundled inside the JAR, but you can also manually place the shared library in your working directory if needed.
+
 ## Usage
 
 ```java
-import com.github.uaparser.UaParser;
+import com.github.octanium91.UaParser;
 
 public class Main {
     public static void main(String[] args) {

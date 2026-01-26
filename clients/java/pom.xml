@@ -6,11 +6,11 @@
 
     <groupId>com.github.octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>1.1.7</version>
+    <version>0.0.1</version> <!-- Placeholder, managed by CI -->
 
     <name>Universal User-Agent Parser</name>
     <description>
-        High-performance User-Agent parser (Go core via JNA). 
+        High-performance User-Agent parser (Go core via JNA).
         Features: Client Hints (Sec-CH-UA) priority, LRU caching, auto-updates.
     </description>
     <url>https://github.com/Octanium91/ua-parser/tree/main/clients/java</url>
@@ -23,27 +23,11 @@
         </license>
     </licenses>
 
-    <developers>
-        <developer>
-            <id>octanium91</id>
-            <name>Octanium91</name>
-            <url>https://github.com/Octanium91</url>
-            <roles>
-                <role>Maintainer</role>
-            </roles>
-        </developer>
-    </developers>
-
     <scm>
         <connection>scm:git:git://github.com/Octanium91/ua-parser.git</connection>
         <developerConnection>scm:git:ssh://github.com:Octanium91/ua-parser.git</developerConnection>
         <url>https://github.com/Octanium91/ua-parser</url>
     </scm>
-
-    <issueManagement>
-        <system>GitHub Issues</system>
-        <url>https://github.com/Octanium91/ua-parser/issues</url>
-    </issueManagement>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
