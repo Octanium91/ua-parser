@@ -22,18 +22,16 @@ We provide official wrappers for major languages that use the core shared librar
 - **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser`
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
 - **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
-- **[Java](./clients/java)**: `com.github.octanium91:ua-parser` (GitHub Packages)
+- **[Java](./clients/java)**: `com.github.octanium91.ua-parser:ua-parser` (JitPack, GitHub Packages)
 
 ### Package Registry Setup
 
-Since Node.js and Java packages are hosted on **GitHub Packages**, you must configure your package manager to use the GitHub registry. 
-
-As the repository is public, you can download packages without authentication. However, you still need to tell your package manager where to find them.
+For Node.js and Java, you must configure your package manager to find the packages. 
 
 | Platform | Setup Requirement | Link |
 |----------|-------------------|------|
-| **Node.js** | Create `.npmrc` with registry | [Node.js Setup](./clients/node#installation) |
-| **Java** | Update `pom.xml` or `build.gradle` | [Java Setup](./clients/java#installation) |
+| **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
+| **Java** | Add **JitPack** (Recommended) or GitHub repository | [Java Setup](./clients/java#installation) |
 | **Python** | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
 ---

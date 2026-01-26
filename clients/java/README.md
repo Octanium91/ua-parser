@@ -4,9 +4,44 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ## Installation
 
-The package is hosted on **GitHub Packages**. Since the repository is public, you don't need authentication to download the package.
+### Option 1: JitPack (Recommended - No Auth Required)
 
-### 1. Configure Repository
+The easiest way to use this library is via **JitPack**. It does not require any registry configuration or authentication.
+
+#### Maven (`pom.xml`)
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.octanium91.ua-parser</groupId>
+        <artifactId>ua-parser</artifactId>
+        <version>LATEST_VERSION</version>
+    </dependency>
+</dependencies>
+```
+
+#### Gradle (`build.gradle`)
+
+```gradle
+repositories {
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    implementation 'com.github.octanium91.ua-parser:ua-parser:LATEST_VERSION'
+}
+```
+
+### Option 2: GitHub Packages
+
+The package is also hosted on **GitHub Packages**.
 
 #### Maven (`pom.xml`)
 
@@ -17,6 +52,14 @@ The package is hosted on **GitHub Packages**. Since the repository is public, yo
         <url>https://maven.pkg.github.com/octanium91/ua-parser</url>
     </repository>
 </repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.octanium91</groupId>
+        <artifactId>ua-parser</artifactId>
+        <version>LATEST_VERSION</version>
+    </dependency>
+</dependencies>
 ```
 
 #### Gradle (`build.gradle`)
@@ -27,23 +70,7 @@ repositories {
         url = uri("https://maven.pkg.github.com/octanium91/ua-parser")
     }
 }
-```
 
-### 2. Add Dependency
-
-#### Maven (`pom.xml`)
-
-```xml
-<dependency>
-    <groupId>com.github.octanium91</groupId>
-    <artifactId>ua-parser</artifactId>
-    <version>LATEST_VERSION</version>
-</dependency>
-```
-
-#### Gradle (`build.gradle`)
-
-```gradle
 dependencies {
     implementation("com.github.octanium91:ua-parser:LATEST_VERSION")
 }
