@@ -229,7 +229,7 @@ jobs:
           mvn versions:set -DnewVersion=$VERSION -f $POM_FILE -DgenerateBackupPoms=false
 
           # 2. Change GroupId to lowercase
-          sed -i "s|<groupId>com.github.[^<]*</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE
+          sed -i "s|<groupId>com.github.[^<]*</groupId>|<groupId>com.github.$OWNER.ua-parser</groupId>|g" $POM_FILE
 
           # 3. Change Repository URL to lowercase
           sed -i "s|<url>https://maven.pkg.github.com/.*</url>|<url>https://maven.pkg.github.com/$REPO</url>|g" $POM_FILE
@@ -385,7 +385,7 @@ jobs:
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
             ### Package Managers (GitHub Packages)
-            - **Java (Maven)**: `com.github.${{ steps.prep.outputs.owner }}:ua-parser`
+            - **Java (Maven)**: `com.github.${{ steps.prep.outputs.owner }}.ua-parser:ua-parser`
             - **Node.js (npm)**: `@${{ steps.prep.outputs.owner }}/ua-parser`
             
             ### Docker Image

@@ -55,7 +55,7 @@ The package is also hosted on **GitHub Packages**.
 
 <dependencies>
     <dependency>
-        <groupId>com.github.octanium91</groupId>
+        <groupId>com.github.octanium91.ua-parser</groupId>
         <artifactId>ua-parser</artifactId>
         <version>LATEST_VERSION</version>
     </dependency>
@@ -72,7 +72,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.octanium91:ua-parser:LATEST_VERSION")
+    implementation("com.github.octanium91.ua-parser:ua-parser:LATEST_VERSION")
 }
 ```
 

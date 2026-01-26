@@ -1,2 +1,2 @@
-build:
-  - cd clients/java && mvn clean install -DskipTests
+install:
+  - mvn clean install -DskipTests
