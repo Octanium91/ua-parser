@@ -12,7 +12,7 @@ Add the dependency to your `pom.xml` (Ensure you have configured GitHub Packages
 <dependency>
     <groupId>com.github.octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>1.1.4</version>
+    <version>1.1.5</version>
 </dependency>
 ```
 

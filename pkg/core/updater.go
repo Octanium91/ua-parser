@@ -1,13 +1,13 @@
 package core
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/ua-parser/uap-go/uaparser"
-	"gopkg.in/yaml.v2"
 )
 
 func (p *Parser) startUpdater() {
@@ -70,7 +70,7 @@ func (p *Parser) updateRegexes() {
 
 	// Validate the new regexes
 	def := uaparser.RegexDefinitions{}
-	if err := yaml.Unmarshal(data, &def); err != nil {
+	if err := json.Unmarshal(data, &def); err != nil {
 		log.Printf("Failed to parse new regexes: %v", err)
 		return
 	}

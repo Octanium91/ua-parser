@@ -2,16 +2,16 @@ package core
 
 import (
 	_ "embed"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ua-parser/uap-go/uaparser"
-	"gopkg.in/yaml.v3"
 )
 
-//go:embed resources/regexes.yaml
+//go:embed resources/regexes.json
 var defaultRegexes []byte
 
 type Parser struct {
@@ -23,7 +23,7 @@ type Parser struct {
 
 func New(cfg Config) (*Parser, error) {
 	def := uaparser.RegexDefinitions{}
-	if err := yaml.Unmarshal(defaultRegexes, &def); err != nil {
+	if err := json.Unmarshal(defaultRegexes, &def); err != nil {
 		return nil, err
 	}
 

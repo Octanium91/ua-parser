@@ -23,3 +23,6 @@ vendor/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Generated resources
+pkg/core/resources/regexes.json

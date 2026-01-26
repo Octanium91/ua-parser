@@ -13,6 +13,9 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
+# Generate JSON resources from YAML
+RUN go run ./cmd/gen-json/main.go
+
 ARG TARGETOS
 ARG TARGETARCH
 

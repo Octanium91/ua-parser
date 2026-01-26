@@ -15,6 +15,8 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+      - name: Generate JSON resources
+        run: go run ./cmd/gen-json/main.go
       - name: Run Tests
         run: go test -v ./...
 
@@ -28,6 +30,9 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+      
+      - name: Generate JSON resources
+        run: go run ./cmd/gen-json/main.go
       
       - name: Build Linux Server
         run: |
@@ -85,6 +90,9 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+      
+      - name: Generate JSON resources
+        run: go run ./cmd/gen-json/main.go
       
       - name: Build Shared Library
         shell: bash
