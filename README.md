@@ -28,11 +28,11 @@ We provide official wrappers for major languages that use the core shared librar
 
 For Node.js and Java, you must configure your package manager to find the packages. 
 
-| Platform | Setup Requirement | Link |
-|----------|-------------------|------|
+| Platform    | Setup Requirement | Link |
+|-------------|-------------------|------|
 | **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
-| **Java** | Configure GitHub repository | [Java Setup](./clients/java#installation) |
-| **Python** | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
+| **Java**    | Configure GitHub repository | [Java Setup](./clients/java#installation) |
+| **Python** (not tested) | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
 ---
 
