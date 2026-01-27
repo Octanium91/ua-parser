@@ -101,23 +101,36 @@ If you encounter an `UnsatisfiedLinkError`, it usually means the native library 
 
 ```java
 import com.github.octanium91.UaParser;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Main {
     public static void main(String[] args) {
-        // Initialize the parser (automatically detects OS and loads bundled lib)
+        // 1. Initialize the parser
         UaParser parser = new UaParser();
 
-        // Or specify path explicitly if not using bundled libs
-        // UaParser parser = new UaParser("/path/to/ua-parser-linux-amd64.so");
+        // 2. Configure (Typed Config object)
+        UaParser.Config config = new UaParser.Config();
+        config.lruCacheSize = 2000;
+        config.disableAutoUpdate = false;
+        
+        parser.init(config);
 
-        // Initialize the core
-        parser.init("{\"disable_auto_update\": false, \"lru_cache_size\": 1000}");
+        // 3. Prepare data
+        String ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...";
+        
+        // Headers are optional (can be null), but recommended for Client Hints support
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Sec-CH-UA-Platform", "\"Windows\"");
+        headers.put("Sec-CH-UA-Platform-Version", "\"13.0.0\"");
 
-        // Parse a User-Agent
-        String payload = "{\"ua\": \"Mozilla/5.0...\", \"headers\": {}}";
-        String resultJson = parser.parse(payload);
+        // 4. Parse (Returns a typed Result object)
+        UaParser.Result result = parser.parse(ua, headers);
 
-        System.out.println(resultJson);
+        // 5. Use data
+        System.out.println("OS: " + result.os.name + " " + result.os.version);
+        System.out.println("Browser: " + result.browser.name + " " + result.browser.version);
+        System.out.println("Is Bot: " + result.isBot);
     }
 }
 ```
