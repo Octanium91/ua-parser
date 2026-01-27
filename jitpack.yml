@@ -1,30 +1,36 @@
 # We do not compile the code, we just take the ready-made artifact
 install:
   - |
-    echo "Current Tag: $JITPACK_TAG"
+    # 1. Determine the tag using git (more reliable than env vars)
+    # This gets the exact tag currently being built
+    TAG=$(git describe --tags --exact-match 2>/dev/null || echo $JITPACK_TAG)
     
+    if [ -z "$TAG" ]; then
+      echo "Error: Could not determine git tag. Is this a tag build?"
+      exit 1
+    fi
+    
+    echo "Detected Tag: $TAG"
+
     # Remove the 'v' prefix if it exists (v1.1.7 -> 1.1.7)
-    VERSION=${JITPACK_TAG#v}
+    VERSION=${TAG#v}
     echo "Clean Version: $VERSION"
-    
+
     # Form the file name
     JAR_NAME="ua-parser-${VERSION}.jar"
-    
-    # Form the download URL from your repository releases
-    DOWNLOAD_URL="https://github.com/Octanium91/ua-parser/releases/download/${JITPACK_TAG}/${JAR_NAME}"
+
+    # Form the download URL
+    DOWNLOAD_URL="https://github.com/Octanium91/ua-parser/releases/download/${TAG}/${JAR_NAME}"
     echo "Target URL: $DOWNLOAD_URL"
-    
+
     # --- SMART WAIT LOOP START ---
-    # JitPack starts faster than GitHub Actions finishes the release.
-    # We will try to download the file for 15 minutes (30 attempts * 30 seconds).
     MAX_ATTEMPTS=30
     SLEEP_SEC=30
     DOWNLOADED=false
-    
+
     for i in $(seq 1 $MAX_ATTEMPTS); do
         echo "[Attempt $i/$MAX_ATTEMPTS] Trying to download JAR..."
-    
-        # Try to download. If fail, remove the empty file if created.
+
         if wget -O $JAR_NAME $DOWNLOAD_URL; then
             if [ -s "$JAR_NAME" ]; then
                 echo "Success! File downloaded."
@@ -32,29 +38,32 @@ install:
                 break
             fi
         fi
-    
+
         echo "File not found yet (GitHub Action is probably still running). Waiting ${SLEEP_SEC}s..."
         rm -f $JAR_NAME
         sleep $SLEEP_SEC
     done
-    
+
     if [ "$DOWNLOADED" = false ]; then
         echo "Error: Timeout waiting for JAR file in GitHub Releases."
         exit 1
     fi
     # --- SMART WAIT LOOP END ---
-    
-    # Update version and groupId in pom.xml to match the current release and fork
+
+    # Update version and groupId in pom.xml
     POM_FILE="clients/java/pom.xml"
-    # 1. Update version (must match JITPACK_TAG for JitPack to find the artifact)
-    sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${JITPACK_TAG}</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
-    # 2. Update groupId to support forks
-    sed -i "s|<groupId>com.github.Octanium91</groupId>|<groupId>com.github.${JITPACK_USER}</groupId>|g" $POM_FILE
+    
+    # 1. Update version
+    sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${TAG}</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
+    
+    # 2. Update groupId (JITPACK_USER is usually reliable, but let's default if empty)
+    USER=${JITPACK_USER:-Octanium91}
+    sed -i "s|<groupId>com.github.Octanium91</groupId>|<groupId>com.github.${USER}</groupId>|g" $POM_FILE
 
     echo "Updated pom.xml for JitPack:"
     cat $POM_FILE
 
-    # Install the downloaded JAR into the local JitPack repository using the updated POM
+    # Install the downloaded JAR
     mvn install:install-file \
       -Dfile=$JAR_NAME \
       -DpomFile=$POM_FILE
