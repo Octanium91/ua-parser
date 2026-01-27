@@ -189,7 +189,7 @@ jobs:
     needs: build-shared-libs
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -269,6 +269,13 @@ jobs:
 
       - name: Build JAR file
         run: mvn -B package -f clients/java/pom.xml -DskipTests
+
+      - name: Upload JAR to Release Immediately
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: clients/java/target/*.jar
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Java Artifact
         uses: actions/upload-artifact@v4
