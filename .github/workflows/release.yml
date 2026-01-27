@@ -224,6 +224,9 @@ jobs:
           rm -f clients/java/src/main/resources/wasm_exec.js
           rm -f clients/java/src/main/resources/ua-parser.wasm
           
+          # Remove server executables (they don't belong in the client lib)
+          rm -f clients/java/src/main/resources/ua-server*
+          
           # Organize into JNA structure
           # Windows
           mkdir -p clients/java/src/main/resources/win32-x86-64
