@@ -74,6 +74,26 @@ To achieve high accuracy (especially for Windows 11 and full browser versions), 
 | `Sec-CH-UA-Arch` | CPU architecture | Architecture detection (e.g., arm64) |
 | `Sec-CH-UA-Mobile` | Mobile device flag | Improves category detection |
 | `Sec-CH-UA-Full-Version-List` | Full browser version list | Provides exact version (e.g., 120.0.6099.129) |
+| `Sec-CH-UA-Bitness` | CPU architecture bitness | Architecture bitness (e.g., 64) |
+
+### Missing Headers
+If specific Client Hints are unavailable (e.g., browser policy or HTTP connection), the parser automatically falls back to standard regex-based parsing of the `User-Agent` string.
+
+### Requesting Client Hints
+To receive high-entropy Client Hints (like `Sec-CH-UA-Platform-Version` or `Sec-CH-UA-Model`), your server must explicitly request them using the `Accept-CH` response header:
+
+```http
+Accept-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Arch, Sec-CH-UA-Bitness
+```
+
+**Note:** Browsers will only send these headers on subsequent requests after receiving the `Accept-CH` header, and only over **HTTPS**. To ensure they are sent on the first request, you can use the `Critical-CH` header:
+
+```http
+Accept-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model
+Critical-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model
+```
+
+> **Nginx Users:** Standard Nginx configurations typically forward these headers **out-of-the-box**. Explicit configuration is usually not required unless your proxy is configured to strip unknown headers.
 
 ## REST API Server
 

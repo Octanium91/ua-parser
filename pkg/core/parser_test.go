@@ -59,6 +59,26 @@ func TestParser(t *testing.T) {
 		t.Errorf("Expected Category mobile, got %s", res.Category)
 	}
 
+	// Test Client Hints overriding UA for Architecture
+	uaAMD64 := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+	headersArch := map[string]string{
+		"Sec-CH-UA-Arch": `"arm64"`,
+	}
+	res = p.Parse(uaAMD64, headersArch)
+	if res.CPU.Architecture != "arm64" {
+		t.Errorf("Expected CPU arm64 from Client Hints overriding UA, got %s", res.CPU.Architecture)
+	}
+
+	// Test Client Hints case-insensitivity
+	headersCase := map[string]string{
+		"sec-ch-ua-platform":         `"Windows"`,
+		"sec-ch-ua-platform-version": `"13.0.0"`,
+	}
+	res = p.Parse(ua, headersCase)
+	if res.OS.Name != "Windows" || res.OS.Version != "11" {
+		t.Errorf("Expected Windows 11 from lowercase Client Hints, got %s %s", res.OS.Name, res.OS.Version)
+	}
+
 	// Test Bot Detection
 	botUA := "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 	res = p.Parse(botUA, nil)
