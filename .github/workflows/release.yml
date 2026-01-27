@@ -317,8 +317,10 @@ jobs:
           path: clients/node/lib/
           merge-multiple: true
 
-      - name: Clean up headers
-        run: rm -f clients/node/lib/*.h
+      - name: Clean up artifacts
+        run: |
+          rm -f clients/node/lib/*.h
+          rm -f clients/node/lib/ua-server*
 
       - name: Update Package Metadata
         run: |
@@ -370,6 +372,8 @@ jobs:
           rm -f clients/python/uaparser/*.h
           rm -f clients/python/uaparser/wasm_exec.js
           rm -f clients/python/uaparser/ua-parser.wasm
+          rm -f clients/python/uaparser/ua-server*
+          
           ls -R clients/python/uaparser/
 
       - name: Update Setup.py Version
