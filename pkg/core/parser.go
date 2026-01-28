@@ -56,7 +56,11 @@ func (p *Parser) Parse(ua string, headers map[string]string) *Result {
 	cacheKey := ""
 	if p.cache != nil {
 		// Create a stable cache key from UA and relevant headers
-		cacheKey = ua + "|" + headers["Sec-CH-UA-Platform"] + "|" + headers["Sec-CH-UA-Platform-Version"] + "|" + headers["Sec-CH-UA-Model"] + "|" + headers["Sec-CH-UA-Arch"] + "|" + headers["Sec-CH-UA-Full-Version-List"]
+		normalizedHeaders := make(map[string]string)
+		for k, v := range headers {
+			normalizedHeaders[strings.ToLower(k)] = v
+		}
+		cacheKey = ua + "|" + normalizedHeaders["sec-ch-ua-platform"] + "|" + normalizedHeaders["sec-ch-ua-platform-version"] + "|" + normalizedHeaders["sec-ch-ua-model"] + "|" + normalizedHeaders["sec-ch-ua-arch"] + "|" + normalizedHeaders["sec-ch-ua-full-version-list"]
 		if res, ok := p.cache.Get(cacheKey); ok {
 			return res
 		}
@@ -208,18 +212,13 @@ func (p *Parser) applyClientHints(res *Result, headers map[string]string) {
 		return
 	}
 
+	normalizedHeaders := make(map[string]string)
+	for k, v := range headers {
+		normalizedHeaders[strings.ToLower(k)] = v
+	}
+
 	getHeader := func(key string) string {
-		if v, ok := headers[key]; ok {
-			return v
-		}
-		// Fallback to lowercase
-		lowKey := strings.ToLower(key)
-		for k, v := range headers {
-			if strings.ToLower(k) == lowKey {
-				return v
-			}
-		}
-		return ""
+		return normalizedHeaders[strings.ToLower(key)]
 	}
 
 	platform := cleanHeader(getHeader("Sec-CH-UA-Platform"))
