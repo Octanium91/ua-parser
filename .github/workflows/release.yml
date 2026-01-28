@@ -103,6 +103,13 @@ jobs:
             
             echo "Building Linux AMD64 (musl/Alpine)..."
             docker run --rm -v ${{ github.workspace }}:/app -w /app golang:alpine sh -c "apk add --no-cache gcc musl-dev && go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go"
+          elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
+            echo "Building Linux ARM64 (glibc)..."
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
+
+            echo "Building Linux ARM64 (musl/Alpine)..."
+            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:alpine sh -c "apk add --no-cache gcc musl-dev && go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go"
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
@@ -119,10 +126,6 @@ jobs:
             
             # In Go 1.24+ wasm_exec.js moved to lib/wasm, earlier it was in misc/wasm
             find $(go env GOROOT) -name wasm_exec.js -exec cp {} . \;
-          elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
-            echo "Building Linux ARM64 (Cross-compile)..."
-            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
           else
             LDFLAGS="-s -w"
             if [ "${{ matrix.goos }}" == "windows" ]; then
@@ -244,6 +247,10 @@ jobs:
           [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so
           
           mkdir -p clients/java/src/main/resources/linux-aarch64
+          [ -f clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so
+          [ -f clients/java/src/main/resources/libua-parser-linux-arm64-musl.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64-musl.so clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so
+          
+          # Fallback for standard arm64 if no glibc/musl suffix (e.g. from other builds)
           [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua-parser.so
           
           # macOS
@@ -432,7 +439,8 @@ jobs:
             release-artifacts/libua-parser-linux-amd64-glibc.so
             release-artifacts/libua-parser-linux-amd64-musl.so
             release-artifacts/libua-parser-linux-amd64.h
-            release-artifacts/libua-parser-linux-arm64.so
+            release-artifacts/libua-parser-linux-arm64-glibc.so
+            release-artifacts/libua-parser-linux-arm64-musl.so
             release-artifacts/libua-parser-linux-arm64.h
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h

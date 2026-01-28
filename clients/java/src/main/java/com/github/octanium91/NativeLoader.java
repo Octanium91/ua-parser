@@ -18,34 +18,34 @@ public class NativeLoader {
     private static final String LIB_NAME = "ua-parser";
 
     public static void load(Class<?> interfaceClass) {
-        if (Platform.isLinux() && Platform.is64Bit() && "x86-64".equals(Platform.ARCH)) {
+        if (Platform.isLinux()) {
             try {
-                String variant = isMusl() ? "musl" : "glibc";
-                String resourcePath = "/linux-x86-64/libua_parser_" + variant + ".so";
-                
-                File libFile = extractLibrary(resourcePath);
-                
-                // For Linux, we might need to set jna.library.path or load via absolute path
-                System.setProperty("jna.library.path", libFile.getParent());
-                Native.register(interfaceClass, libFile.getAbsolutePath());
-                
-                return;
+                String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" : 
+                             (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
+
+                if (arch != null) {
+                    String variant = isMusl() ? "musl" : "glibc";
+                    String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
+                    
+                    File libFile = extractLibrary(resourcePath);
+                    
+                    System.setProperty("jna.library.path", libFile.getParent());
+                    Native.register(interfaceClass, libFile.getAbsolutePath());
+                    System.out.println("Loaded native library [" + variant + "]: " + libFile.getAbsolutePath());
+                    return;
+                }
             } catch (Exception e) {
-                // Fallback to standard JNA loading if something goes wrong
                 System.err.println("Failed to load native library automatically: " + e.getMessage());
             }
         }
         
-        // Standard loading for other OS or if Linux detection failed
         Native.register(interfaceClass, LIB_NAME);
     }
 
     private static boolean isMusl() {
         // Method 1: Check for known musl dynamic loader files
-        File muslLoader = new File("/lib/ld-musl-x86_64.so.1");
-        if (muslLoader.exists()) {
-            return true;
-        }
+        if (new File("/lib/ld-musl-x86_64.so.1").exists()) return true;
+        if (new File("/lib/ld-musl-aarch64.so.1").exists()) return true;
 
         // Method 2: Check ldd version
         try {
@@ -65,7 +65,12 @@ public class NativeLoader {
     private static File extractLibrary(String resourcePath) throws IOException {
         InputStream in = NativeLoader.class.getResourceAsStream(resourcePath);
         if (in == null) {
-            throw new IOException("Resource not found: " + resourcePath);
+            // Try without leading slash as fallback
+            String altPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
+            in = NativeLoader.class.getClassLoader().getResourceAsStream(altPath);
+            if (in == null) {
+                throw new IOException("Resource not found: " + resourcePath);
+            }
         }
         
         String suffix = ".so";
