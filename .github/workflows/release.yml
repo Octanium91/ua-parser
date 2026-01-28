@@ -97,7 +97,13 @@ jobs:
         env:
           CGO_ENABLED: 1
         run: |
-          if [ "${{ matrix.goos }}" == "darwin" ]; then
+          if [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
+            echo "Building Linux AMD64 (glibc)..."
+            go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
+            
+            echo "Building Linux AMD64 (musl/Alpine)..."
+            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:alpine sh -c "apk add --no-cache gcc musl-dev && go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go"
+          elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
@@ -234,7 +240,8 @@ jobs:
           
           # Linux
           mkdir -p clients/java/src/main/resources/linux-x86-64
-          [ -f clients/java/src/main/resources/libua-parser-linux-amd64.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64.so clients/java/src/main/resources/linux-x86-64/libua-parser.so
+          [ -f clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so
+          [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so
           
           mkdir -p clients/java/src/main/resources/linux-aarch64
           [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua-parser.so
@@ -422,7 +429,8 @@ jobs:
             release-artifacts/ua-server-linux-amd64
             release-artifacts/ua-server-linux-arm64
             release-artifacts/ua-server-windows-amd64.exe
-            release-artifacts/libua-parser-linux-amd64.so
+            release-artifacts/libua-parser-linux-amd64-glibc.so
+            release-artifacts/libua-parser-linux-amd64-musl.so
             release-artifacts/libua-parser-linux-amd64.h
             release-artifacts/libua-parser-linux-arm64.so
             release-artifacts/libua-parser-linux-arm64.h

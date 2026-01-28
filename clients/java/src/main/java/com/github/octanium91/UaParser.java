@@ -28,11 +28,18 @@ public class UaParser {
     private final Gson gson;
 
     public UaParser() {
-        this("ua-parser");
+        this.lib = null; // Unused when using NativeLoader
+        this.gson = new Gson();
+        NativeLoader.load(UaParserLib.class);
     }
 
     public UaParser(String libPath) {
-        this.lib = Native.load(libPath, UaParserLib.class);
+        if (libPath.equals("ua-parser")) {
+            this.lib = null;
+            NativeLoader.load(UaParserLib.class);
+        } else {
+            this.lib = Native.load(libPath, UaParserLib.class);
+        }
         this.gson = new Gson();
     }
 
@@ -93,6 +100,13 @@ public class UaParser {
         public boolean isAiCrawler;
     }
 
+    private UaParserLib getLib() {
+        if (lib != null) {
+            return lib;
+        }
+        return Native.load("ua-parser", UaParserLib.class);
+    }
+
     /**
      * Initializes the parser with a configuration object.
      * @param config configuration object
@@ -106,10 +120,10 @@ public class UaParser {
      * @param configJson e.g. "{\"disable_auto_update\": false}"
      */
     public void init(String configJson) {
-        Pointer errPtr = lib.Init(configJson);
+        Pointer errPtr = getLib().Init(configJson);
         if (errPtr != null) {
             String err = errPtr.getString(0);
-            lib.FreeString(errPtr);
+            getLib().FreeString(errPtr);
             throw new RuntimeException("Failed to initialize parser: " + err);
         }
     }
@@ -138,10 +152,10 @@ public class UaParser {
      * @return JSON string containing the result
      */
     public String parse(String payloadJson) {
-        Pointer resPtr = lib.Parse(payloadJson);
+        Pointer resPtr = getLib().Parse(payloadJson);
         if (resPtr != null) {
             String res = resPtr.getString(0);
-            lib.FreeString(resPtr);
+            getLib().FreeString(resPtr);
             return res;
         }
         return null;
