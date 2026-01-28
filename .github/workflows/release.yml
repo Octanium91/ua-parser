@@ -85,6 +85,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
