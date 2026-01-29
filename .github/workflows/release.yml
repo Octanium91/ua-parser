@@ -145,6 +145,8 @@ jobs:
           name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}
           path: |
             ${{ matrix.output_lib }}
+            libua-parser-linux-*-musl.so
+            libua-parser-linux-*-glibc.so
             libua-parser-darwin-*.dylib
             wasm_exec.js
             *.h
@@ -233,6 +235,10 @@ jobs:
 
       - name: Clean up and Verify Resources
         run: |
+          # DEBUG: Show all downloaded files before moving
+          echo "Files downloaded to resources:"
+          ls -R clients/java/src/main/resources
+
           # Remove headers and other non-library files from JAR resources
           rm -f clients/java/src/main/resources/*.h
           rm -f clients/java/src/main/resources/wasm_exec.js
@@ -244,26 +250,57 @@ jobs:
           # Organize into JNA structure
           # Windows
           mkdir -p clients/java/src/main/resources/win32-x86-64
-          [ -f clients/java/src/main/resources/ua-parser-windows-amd64.dll ] && mv clients/java/src/main/resources/ua-parser-windows-amd64.dll clients/java/src/main/resources/win32-x86-64/ua-parser.dll
+          if [ -f clients/java/src/main/resources/ua-parser-windows-amd64.dll ]; then
+              echo "Found Windows lib, moving..."
+              mv clients/java/src/main/resources/ua-parser-windows-amd64.dll clients/java/src/main/resources/win32-x86-64/ua-parser.dll
+          fi
           
-          # Linux
+          # Linux x86-64
           mkdir -p clients/java/src/main/resources/linux-x86-64
-          [ -f clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so
-          [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ] && mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so
+          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so ]; then
+              echo "Found Linux x86-64 Glibc lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so
+          else
+              echo "ERROR: Linux x86-64 Glibc lib not found!"
+          fi
+
+          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ]; then
+              echo "Found Linux x86-64 Musl lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so
+          else
+              echo "WARNING: Linux x86-64 Musl lib not found!"
+          fi
           
+          # Linux aarch64
           mkdir -p clients/java/src/main/resources/linux-aarch64
-          [ -f clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so
-          [ -f clients/java/src/main/resources/libua-parser-linux-arm64-musl.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64-musl.so clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so
+          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so ]; then
+              echo "Found Linux ARM64 Glibc lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so
+          fi
+
+          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-musl.so ]; then
+              echo "Found Linux ARM64 Musl lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-arm64-musl.so clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so
+          fi
           
           # Fallback for standard arm64 if no glibc/musl suffix (e.g. from other builds)
-          [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ] && mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua-parser.so
+          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ]; then
+              echo "Found generic Linux ARM64 lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua-parser.so
+          fi
           
           # macOS
           mkdir -p clients/java/src/main/resources/darwin-x86-64
-          [ -f clients/java/src/main/resources/libua-parser-darwin-amd64.dylib ] && mv clients/java/src/main/resources/libua-parser-darwin-amd64.dylib clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib
+          if [ -f clients/java/src/main/resources/libua-parser-darwin-amd64.dylib ]; then
+              echo "Found macOS x86-64 lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-darwin-amd64.dylib clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib
+          fi
           
           mkdir -p clients/java/src/main/resources/darwin-aarch64
-          [ -f clients/java/src/main/resources/libua-parser-darwin-arm64.dylib ] && mv clients/java/src/main/resources/libua-parser-darwin-arm64.dylib clients/java/src/main/resources/darwin-aarch64/libua-parser.dylib
+          if [ -f clients/java/src/main/resources/libua-parser-darwin-arm64.dylib ]; then
+              echo "Found macOS ARM64 lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-darwin-arm64.dylib clients/java/src/main/resources/darwin-aarch64/libua-parser.dylib
+          fi
 
           echo "Final resources to be bundled in JAR:"
           ls -R clients/java/src/main/resources
