@@ -2,9 +2,11 @@ const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'u
 
 let koffi;
 let path;
+let fs;
 if (!isBrowser) {
     koffi = require('koffi');
     path = require('path');
+    fs = require('fs');
 }
 
 class UaParser {
@@ -36,53 +38,44 @@ class UaParser {
         this.isInitialized = true;
     }
 
+    _getLibName() {
+        const isWindows = process.platform === 'win32';
+        const isMac = process.platform === 'darwin';
+        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+        let ext = 'so';
+        let platform = 'linux';
+        let prefix = 'lib';
+
+        if (isWindows) {
+            ext = 'dll';
+            platform = 'windows';
+            prefix = '';
+        } else if (isMac) {
+            ext = 'dylib';
+            platform = 'darwin';
+            prefix = 'lib';
+        }
+        return `${prefix}ua-parser-${platform}-${arch}.${ext}`;
+    }
+
     _initNode(config) {
         if (!this.libPath) {
-            const isWindows = process.platform === 'win32';
-            const isMac = process.platform === 'darwin';
-            const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-            let ext = 'so';
-            let platform = 'linux';
-            let prefix = 'lib';
+            this.libPath = path.join(__dirname, this._getLibName());
+        }
 
-            if (isWindows) {
-                ext = 'dll';
-                platform = 'windows';
-                prefix = '';
-            } else if (isMac) {
-                ext = 'dylib';
-                platform = 'darwin';
-                prefix = 'lib';
+        if (!fs.existsSync(this.libPath)) {
+            const fallbackPath = path.join(process.cwd(), this._getLibName());
+            if (fs.existsSync(fallbackPath)) {
+                this.libPath = fallbackPath;
+            } else {
+                throw new Error(`Shared library not found at ${this.libPath} or ${fallbackPath}. Please ensure the library is installed correctly.`);
             }
-            this.libPath = path.join(__dirname, `${prefix}ua-parser-${platform}-${arch}.${ext}`);
         }
 
         try {
             this.lib = koffi.load(this.libPath);
         } catch (e) {
-            // Fallback to current working directory
-            const isWindows = process.platform === 'win32';
-            const isMac = process.platform === 'darwin';
-            const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-            let ext = 'so';
-            let platform = 'linux';
-            let prefix = 'lib';
-
-            if (isWindows) {
-                ext = 'dll';
-                platform = 'windows';
-                prefix = '';
-            } else if (isMac) {
-                ext = 'dylib';
-                platform = 'darwin';
-                prefix = 'lib';
-            }
-            const fallbackPath = path.join(process.cwd(), `${prefix}ua-parser-${platform}-${arch}.${ext}`);
-            try {
-                this.lib = koffi.load(fallbackPath);
-            } catch (e2) {
-                throw new Error(`Failed to load shared library from ${this.libPath} or ${fallbackPath}`);
-            }
+            throw new Error(`Failed to load shared library: ${e.message}`);
         }
 
         this.initFunc = this.lib.func('Init', 'void *', ['string']);
