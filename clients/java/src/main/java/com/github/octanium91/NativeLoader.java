@@ -28,11 +28,18 @@ public class NativeLoader {
                     String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
                     
                     File libFile = extractLibrary(resourcePath);
+                    if (libFile == null) {
+                        // Fallback to generic name
+                        resourcePath = "/" + arch + "/libua_parser.so";
+                        libFile = extractLibrary(resourcePath);
+                    }
                     
-                    System.setProperty("jna.library.path", libFile.getParent());
-                    Native.register(interfaceClass, libFile.getAbsolutePath());
-                    System.out.println("Loaded native library [" + variant + "]: " + libFile.getAbsolutePath());
-                    return;
+                    if (libFile != null) {
+                        System.setProperty("jna.library.path", libFile.getParent());
+                        Native.register(interfaceClass, libFile.getAbsolutePath());
+                        System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
+                        return;
+                    }
                 }
             } catch (Exception e) {
                 System.err.println("Failed to load native library automatically: " + e.getMessage());
@@ -62,22 +69,30 @@ public class NativeLoader {
         return false;
     }
 
-    private static File extractLibrary(String resourcePath) throws IOException {
-        InputStream in = NativeLoader.class.getResourceAsStream(resourcePath);
-        if (in == null) {
-            // Try without leading slash as fallback
-            String altPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
-            in = NativeLoader.class.getClassLoader().getResourceAsStream(altPath);
+    private static File extractLibrary(String resourcePath) {
+        try {
+            InputStream in = NativeLoader.class.getResourceAsStream(resourcePath);
             if (in == null) {
-                throw new IOException("Resource not found: " + resourcePath);
+                // Try without leading slash as fallback
+                String altPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
+                in = NativeLoader.class.getClassLoader().getResourceAsStream(altPath);
             }
+            
+            if (in == null) {
+                return null;
+            }
+            
+            String suffix = ".so";
+            if (resourcePath.endsWith(".dll")) suffix = ".dll";
+            else if (resourcePath.endsWith(".dylib")) suffix = ".dylib";
+            
+            File tempFile = Files.createTempFile("libua_parser", suffix).toFile();
+            tempFile.deleteOnExit();
+            
+            Files.copy(in, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            return tempFile;
+        } catch (IOException e) {
+            return null;
         }
-        
-        String suffix = ".so";
-        File tempFile = Files.createTempFile("libua_parser", suffix).toFile();
-        tempFile.deleteOnExit();
-        
-        Files.copy(in, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        return tempFile;
     }
 }

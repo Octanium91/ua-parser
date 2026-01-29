@@ -286,9 +286,13 @@ jobs:
           # Fallback for standard arm64 if no glibc/musl suffix (e.g. from other builds)
           if [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ]; then
               echo "Found generic Linux ARM64 lib, moving..."
-              mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua-parser.so
+              mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua_parser.so
           fi
           
+          # Standard JNA fallback (without glibc/musl suffix)
+          cp clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser.so 2>/dev/null || true
+          cp clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser.so 2>/dev/null || true
+
           # macOS
           mkdir -p clients/java/src/main/resources/darwin-x86-64
           if [ -f clients/java/src/main/resources/libua-parser-darwin-amd64.dylib ]; then
@@ -315,10 +319,12 @@ jobs:
           # Linux x86-64
           [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_glibc.so")
           [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_musl.so")
+          [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser.so")
           
           # Linux aarch64
           [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_glibc.so")
           [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_musl.so")
+          [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser.so")
           
           # macOS
           [ ! -f clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-x86-64/libua-parser.dylib")

@@ -62,8 +62,13 @@
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
+                <filtering>false</filtering>
                 <includes>
-                    <include>**/*</include>
+                    <include>**/*.so</include>
+                    <include>**/*.dll</include>
+                    <include>**/*.dylib</include>
+                    <include>**/*.yaml</include>
+                    <include>**/*.json</include>
                 </includes>
             </resource>
         </resources>
