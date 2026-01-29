@@ -5,7 +5,8 @@
   "main": "lib/index.js",
   "browser": {
     "koffi": false,
-    "path": false
+    "path": false,
+    "fs": false
   },
   "files": [
     "lib/index.js",
