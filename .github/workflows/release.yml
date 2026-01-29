@@ -305,6 +305,35 @@ jobs:
           echo "Final resources to be bundled in JAR:"
           ls -R clients/java/src/main/resources
 
+      - name: Verify Required Native Libraries
+        run: |
+          MISSING_LIBS=()
+          
+          # Check critical libraries (at least one for each platform)
+          [ ! -f clients/java/src/main/resources/win32-x86-64/ua-parser.dll ] && MISSING_LIBS+=("win32-x86-64/ua-parser.dll")
+          
+          # Linux x86-64
+          [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_glibc.so")
+          [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_musl.so")
+          
+          # Linux aarch64
+          [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_glibc.so")
+          [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_musl.so")
+          
+          # macOS
+          [ ! -f clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-x86-64/libua-parser.dylib")
+          [ ! -f clients/java/src/main/resources/darwin-aarch64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-aarch64/libua-parser.dylib")
+          
+          if [ ${#MISSING_LIBS[@]} -ne 0 ]; then
+            echo "CRITICAL ERROR: The following required native libraries are missing:"
+            for lib in "${MISSING_LIBS[@]}"; do
+              echo "  - $lib"
+            done
+            exit 1
+          fi
+          
+          echo "All critical native libraries verified successfully."
+
       - name: Update Maven Version & Group ID
         run: |
           OWNER="${{ steps.info.outputs.owner }}"
