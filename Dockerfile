@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # Install build dependencies for CGO (required for cshared)
 RUN apk add --no-cache gcc musl-dev

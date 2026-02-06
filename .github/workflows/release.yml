@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
       - name: Run Tests
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
@@ -92,7 +92,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
       
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
@@ -107,14 +107,14 @@ jobs:
             go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
             
             echo "Building Linux AMD64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w -linkmode=external -extldflags=-static' -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go"
+            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:1.25-alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go"
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (glibc)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
             GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
 
             echo "Building Linux ARM64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w -linkmode=external -extldflags=-static' -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go"
+            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:1.25-alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go"
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
