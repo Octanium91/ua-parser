@@ -5,6 +5,8 @@ import com.google.gson.annotations.SerializedName;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
+import com.sun.jna.Platform;
+import java.io.File;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,13 +16,8 @@ import java.util.Map;
  */
 public class UaParser {
     public interface UaParserLib extends Library {
-        // Go: func Init(configJSON *C.char) *C.char
         Pointer Init(String configJSON);
-        
-        // Go: func Parse(payloadJSON *C.char) *C.char
         Pointer Parse(String payloadJSON);
-        
-        // Go: func FreeString(ptr *C.char)
         void FreeString(Pointer ptr);
     }
 
@@ -28,88 +25,60 @@ public class UaParser {
     private final Gson gson;
 
     public UaParser() {
-        this.lib = null; // Unused when using NativeLoader
         this.gson = new Gson();
-        NativeLoader.load(UaParserLib.class);
+        this.lib = loadLibrary();
     }
 
     public UaParser(String libPath) {
-        if (libPath.equals("ua-parser")) {
-            this.lib = null;
-            NativeLoader.load(UaParserLib.class);
-        } else {
-            this.lib = Native.load(libPath, UaParserLib.class);
-        }
         this.gson = new Gson();
+        this.lib = Native.load(libPath, UaParserLib.class);
     }
 
-    public static class Config {
-        @SerializedName("disable_auto_update")
-        public boolean disableAutoUpdate;
+    private static UaParserLib loadLibrary() {
+        if (Platform.isLinux()) {
+            String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
+                    (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
 
-        @SerializedName("lru_cache_size")
-        public int lruCacheSize;
+            if (arch != null) {
+                String variant = NativeLoader.isMusl() ? "musl" : "glibc";
+                String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
 
-        @SerializedName("update_url")
-        public String updateUrl;
+                File libFile = NativeLoader.extractLibrary(resourcePath);
+                if (libFile == null) {
+                    resourcePath = "/" + arch + "/libua_parser.so";
+                    libFile = NativeLoader.extractLibrary(resourcePath);
+                }
 
-        @SerializedName("update_interval")
-        public String updateInterval;
-    }
-
-    public static class OSInfo {
-        public String name;
-        public String version;
-    }
-
-    public static class BrowserInfo {
-        public String name;
-        public String version;
-        public String major;
-        public String type;
-    }
-
-    public static class DeviceInfo {
-        public String model;
-        public String vendor;
-        public String type;
-    }
-
-    public static class CPUInfo {
-        public String architecture;
-    }
-
-    public static class EngineInfo {
-        public String name;
-        public String version;
-    }
-
-    public static class Result {
-        public String ua;
-        public OSInfo os;
-        public BrowserInfo browser;
-        public DeviceInfo device;
-        public CPUInfo cpu;
-        public EngineInfo engine;
-        public String category;
-
-        @SerializedName("is_bot")
-        public boolean isBot;
-
-        @SerializedName("is_ai_crawler")
-        public boolean isAiCrawler;
-    }
-
-    private UaParserLib getLib() {
-        if (lib != null) {
-            return lib;
+                if (libFile != null) {
+                    try {
+                        UaParserLib loaded = Native.load(libFile.getAbsolutePath(), UaParserLib.class);
+                        System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
+                        return loaded;
+                    } catch (UnsatisfiedLinkError e) {
+                        if (!"musl".equals(variant)) {
+                            System.err.println("Failed to load " + variant + " library: " + e.getMessage());
+                            System.err.println("Falling back to musl (statically linked) variant...");
+                            String muslPath = "/" + arch + "/libua_parser_musl.so";
+                            File muslFile = NativeLoader.extractLibrary(muslPath);
+                            if (muslFile != null) {
+                                UaParserLib loaded = Native.load(muslFile.getAbsolutePath(), UaParserLib.class);
+                                System.out.println("Loaded native library [" + arch + "/musl] (fallback): " + muslFile.getAbsolutePath());
+                                return loaded;
+                            }
+                        }
+                        throw e;
+                    }
+                }
+            }
         }
+
         return Native.load("ua-parser", UaParserLib.class);
     }
 
+    // ... existing code ...
+
     /**
      * Initializes the parser with a configuration object.
-     * @param config configuration object
      */
     public void init(Config config) {
         init(gson.toJson(config));
@@ -117,22 +86,18 @@ public class UaParser {
 
     /**
      * Initializes the parser with a JSON configuration string.
-     * @param configJson e.g. "{\"disable_auto_update\": false}"
      */
     public void init(String configJson) {
-        Pointer errPtr = getLib().Init(configJson);
+        Pointer errPtr = lib.Init(configJson);
         if (errPtr != null) {
             String err = errPtr.getString(0);
-            getLib().FreeString(errPtr);
+            lib.FreeString(errPtr);
             throw new RuntimeException("Failed to initialize parser: " + err);
         }
     }
 
     /**
      * Parses a User-Agent string with optional headers.
-     * @param userAgent User-Agent string
-     * @param headers HTTP headers (optional, can be null)
-     * @return typed result object
      */
     public Result parse(String userAgent, Map<String, String> headers) {
         if (headers == null) {
@@ -141,21 +106,19 @@ public class UaParser {
         Map<String, Object> payload = new HashMap<>();
         payload.put("ua", userAgent);
         payload.put("headers", headers);
-        
+
         String resJson = parse(gson.toJson(payload));
         return gson.fromJson(resJson, Result.class);
     }
 
     /**
      * Parses data and returns a JSON result string.
-     * @param payloadJson e.g. "{\"ua\": \"...\", \"headers\": {}}"
-     * @return JSON string containing the result
      */
     public String parse(String payloadJson) {
-        Pointer resPtr = getLib().Parse(payloadJson);
+        Pointer resPtr = lib.Parse(payloadJson);
         if (resPtr != null) {
             String res = resPtr.getString(0);
-            getLib().FreeString(resPtr);
+            lib.FreeString(resPtr);
             return res;
         }
         return null;

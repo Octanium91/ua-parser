@@ -66,12 +66,10 @@ public class NativeLoader {
         Native.register(interfaceClass, LIB_NAME);
     }
 
-    private static boolean isMusl() {
-        // Method 1: Check for known musl dynamic loader files
+    static boolean isMusl() {
         if (new File("/lib/ld-musl-x86_64.so.1").exists()) return true;
         if (new File("/lib/ld-musl-aarch64.so.1").exists()) return true;
 
-        // Method 2: Check ldd version
         try {
             Process p = new ProcessBuilder("ldd", "--version").start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
@@ -82,11 +80,11 @@ public class NativeLoader {
             }
         } catch (Exception ignored) {
         }
-        
+
         return false;
     }
 
-    private static File extractLibrary(String resourcePath) {
+    static File extractLibrary(String resourcePath) {
         try {
             InputStream in = NativeLoader.class.getResourceAsStream(resourcePath);
             if (in == null) {

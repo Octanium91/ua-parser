@@ -2,14 +2,13 @@
 install:
   - |
     # 1. Determine the tag using git (more reliable than env vars)
-    # This gets the exact tag currently being built
     TAG=$(git describe --tags --exact-match 2>/dev/null || echo $JITPACK_TAG)
-    
+
     if [ -z "$TAG" ]; then
       echo "Error: Could not determine git tag. Is this a tag build?"
       exit 1
     fi
-    
+
     echo "Detected Tag: $TAG"
 
     # Remove the 'v' prefix if it exists (v1.1.7 -> 1.1.7)
@@ -50,13 +49,13 @@ install:
     fi
     # --- SMART WAIT LOOP END ---
 
-    # Update version and groupId in pom.xml
+    # Update version and groupId in pom.xml BEFORE install
     POM_FILE="clients/java/pom.xml"
-    
-    # 1. Update version
-    sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${TAG}</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
-    
-    # 2. Update groupId (JITPACK_USER is usually reliable, but let's default if empty)
+
+    # 1. Update version (use VERSION without 'v' prefix)
+    sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${VERSION}</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
+
+    # 2. Update groupId
     USER=${JITPACK_USER:-Octanium91}
     sed -i "s|<groupId>com.github.Octanium91</groupId>|<groupId>com.github.${USER}</groupId>|g" $POM_FILE
 
