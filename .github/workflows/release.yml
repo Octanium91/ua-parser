@@ -107,14 +107,20 @@ jobs:
             go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
             
             echo "Building Linux AMD64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:1.25-alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go"
+            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:1.25-alpine sh -c "\
+              apk add --no-cache gcc musl-dev && \
+              CGO_ENABLED=1 go build -buildmode=c-archive -ldflags='-s -w' -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
+              gcc -shared -o libua-parser-linux-amd64-musl.so -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive -lpthread"
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (glibc)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
             GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
 
             echo "Building Linux ARM64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:1.25-alpine sh -c "apk add --no-cache gcc musl-dev && CGO_ENABLED=1 go build -buildmode=c-shared -ldflags='-s -w' -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go"
+            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:1.25-alpine sh -c "\
+              apk add --no-cache gcc musl-dev && \
+              CGO_ENABLED=1 go build -buildmode=c-archive -ldflags='-s -w' -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
+              gcc -shared -o libua-parser-linux-arm64-musl.so -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive -lpthread"
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
