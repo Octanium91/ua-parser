@@ -75,7 +75,62 @@ public class UaParser {
         return Native.load("ua-parser", UaParserLib.class);
     }
 
-    // ... existing code ...
+    public static class Config {
+        @SerializedName("disable_auto_update")
+        public boolean disableAutoUpdate;
+
+        @SerializedName("lru_cache_size")
+        public int lruCacheSize;
+
+        @SerializedName("update_url")
+        public String updateUrl;
+
+        @SerializedName("update_interval")
+        public String updateInterval;
+    }
+
+    public static class OSInfo {
+        public String name;
+        public String version;
+    }
+
+    public static class BrowserInfo {
+        public String name;
+        public String version;
+        public String major;
+        public String type;
+    }
+
+    public static class DeviceInfo {
+        public String model;
+        public String vendor;
+        public String type;
+    }
+
+    public static class CPUInfo {
+        public String architecture;
+    }
+
+    public static class EngineInfo {
+        public String name;
+        public String version;
+    }
+
+    public static class Result {
+        public String ua;
+        public OSInfo os;
+        public BrowserInfo browser;
+        public DeviceInfo device;
+        public CPUInfo cpu;
+        public EngineInfo engine;
+        public String category;
+
+        @SerializedName("is_bot")
+        public boolean isBot;
+
+        @SerializedName("is_ai_crawler")
+        public boolean isAiCrawler;
+    }
 
     /**
      * Initializes the parser with a configuration object.
