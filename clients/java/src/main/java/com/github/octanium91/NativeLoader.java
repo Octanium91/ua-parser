@@ -20,25 +20,42 @@ public class NativeLoader {
     public static void load(Class<?> interfaceClass) {
         if (Platform.isLinux()) {
             try {
-                String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" : 
-                             (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
+                String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
+                        (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
 
                 if (arch != null) {
                     String variant = isMusl() ? "musl" : "glibc";
                     String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
-                    
+
                     File libFile = extractLibrary(resourcePath);
                     if (libFile == null) {
                         // Fallback to generic name
                         resourcePath = "/" + arch + "/libua_parser.so";
                         libFile = extractLibrary(resourcePath);
                     }
-                    
+
                     if (libFile != null) {
-                        System.setProperty("jna.library.path", libFile.getParent());
-                        Native.register(interfaceClass, libFile.getAbsolutePath());
-                        System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
-                        return;
+                        try {
+                            System.setProperty("jna.library.path", libFile.getParent());
+                            Native.register(interfaceClass, libFile.getAbsolutePath());
+                            System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
+                            return;
+                        } catch (UnsatisfiedLinkError e) {
+                            // glibc version mismatch — fall back to musl (statically linked)
+                            if (!variant.equals("musl")) {
+                                System.err.println("Failed to load " + variant + " library: " + e.getMessage());
+                                System.err.println("Falling back to musl (statically linked) variant...");
+                                String muslPath = "/" + arch + "/libua_parser_musl.so";
+                                File muslFile = extractLibrary(muslPath);
+                                if (muslFile != null) {
+                                    System.setProperty("jna.library.path", muslFile.getParent());
+                                    Native.register(interfaceClass, muslFile.getAbsolutePath());
+                                    System.out.println("Loaded native library [" + arch + "/musl] (fallback): " + muslFile.getAbsolutePath());
+                                    return;
+                                }
+                            }
+                            throw e;
+                        }
                     }
                 }
             } catch (Exception e) {
