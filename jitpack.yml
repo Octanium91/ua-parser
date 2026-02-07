@@ -59,7 +59,7 @@ install:
     # Update version and groupId in pom.xml BEFORE install
     POM_FILE="clients/java/pom.xml"
 
-    # 1. Update version (use VERSION without 'v' prefix)
+    # 1. Update version
     sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${VERSION}</version>|g" $POM_FILE
 
     # 2. Update groupId

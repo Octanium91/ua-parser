@@ -360,7 +360,7 @@ jobs:
           echo "Configuring POM for: $OWNER / $REPO version $VERSION"
 
           # 1. Update version (using sed for reliability, targeting the placeholder comment)
-          sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>$VERSION</version> <!-- Placeholder, managed by CI -->|g" $POM_FILE
+          sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>$VERSION</version>|g" $POM_FILE
 
           # 2. Update GroupId (only the project groupId)
           sed -i "s|<groupId>com.github.Octanium91</groupId>|<groupId>com.github.$OWNER</groupId>|g" $POM_FILE

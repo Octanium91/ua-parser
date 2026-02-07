@@ -6,7 +6,7 @@
 
     <groupId>com.github.Octanium91</groupId>
     <artifactId>ua-parser</artifactId>
-    <version>0.0.0</version> <!-- Placeholder, managed by CI -->
+    <version>v0.0.0</version> <!-- Placeholder, managed by CI -->
 
     <name>Universal User-Agent Parser</name>
     <description>
