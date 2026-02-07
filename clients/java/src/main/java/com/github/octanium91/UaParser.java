@@ -52,17 +52,13 @@ public class UaParser {
                 if (libFile != null) {
                     try {
                         UaParserLib loaded = Native.load(libFile.getAbsolutePath(), UaParserLib.class);
-                        System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
                         return loaded;
                     } catch (UnsatisfiedLinkError e) {
                         if (!"musl".equals(variant)) {
-                            System.err.println("Failed to load " + variant + " library: " + e.getMessage());
-                            System.err.println("Falling back to musl (statically linked) variant...");
                             String muslPath = "/" + arch + "/libua_parser_musl.so";
                             File muslFile = NativeLoader.extractLibrary(muslPath);
                             if (muslFile != null) {
                                 UaParserLib loaded = Native.load(muslFile.getAbsolutePath(), UaParserLib.class);
-                                System.out.println("Loaded native library [" + arch + "/musl] (fallback): " + muslFile.getAbsolutePath());
                                 return loaded;
                             }
                         }
