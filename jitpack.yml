@@ -72,4 +72,5 @@ install:
     # Install the downloaded JAR
     mvn install:install-file \
       -Dfile=$JAR_NAME \
-      -DpomFile=$POM_FILE
+      -DpomFile=$POM_FILE \
+      -Dversion=$VERSION
