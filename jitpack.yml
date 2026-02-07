@@ -30,15 +30,22 @@ install:
     for i in $(seq 1 $MAX_ATTEMPTS); do
         echo "[Attempt $i/$MAX_ATTEMPTS] Trying to download JAR..."
 
-        if wget -O $JAR_NAME $DOWNLOAD_URL; then
-            if [ -s "$JAR_NAME" ]; then
-                echo "Success! File downloaded."
+        # Try to download (allow failure to continue loop)
+        wget -O $JAR_NAME $DOWNLOAD_URL || true
+
+        if [ -s "$JAR_NAME" ]; then
+            # Verify it is a valid JAR (not 404 HTML)
+            if jar tf "$JAR_NAME" > /dev/null 2>&1; then
+                echo "Success! File downloaded and verified."
                 DOWNLOADED=true
                 break
+            else
+                echo "Warning: Downloaded file is not a valid JAR. Content preview:"
+                head -n 5 "$JAR_NAME"
             fi
         fi
 
-        echo "File not found yet (GitHub Action is probably still running). Waiting ${SLEEP_SEC}s..."
+        echo "File not found or invalid yet (GitHub Action is probably still running). Waiting ${SLEEP_SEC}s..."
         rm -f $JAR_NAME
         sleep $SLEEP_SEC
     done

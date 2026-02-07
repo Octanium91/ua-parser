@@ -1,7 +1,5 @@
 package com.github.octanium91;
 
-import com.sun.jna.Native;
-import com.sun.jna.Platform;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -15,58 +13,8 @@ import java.nio.file.StandardCopyOption;
  */
 public class NativeLoader {
 
-    private static final String LIB_NAME = "ua-parser";
-
-    public static void load(Class<?> interfaceClass) {
-        if (Platform.isLinux()) {
-            try {
-                String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
-                        (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
-
-                if (arch != null) {
-                    String variant = isMusl() ? "musl" : "glibc";
-                    String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
-
-                    File libFile = extractLibrary(resourcePath);
-                    if (libFile == null) {
-                        // Fallback to generic name
-                        resourcePath = "/" + arch + "/libua_parser.so";
-                        libFile = extractLibrary(resourcePath);
-                    }
-
-                    if (libFile != null) {
-                        try {
-                            System.setProperty("jna.library.path", libFile.getParent());
-                            Native.register(interfaceClass, libFile.getAbsolutePath());
-                            System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
-                            return;
-                        } catch (UnsatisfiedLinkError e) {
-                            // glibc version mismatch — fall back to musl (statically linked)
-                            if (!variant.equals("musl")) {
-                                System.err.println("Failed to load " + variant + " library: " + e.getMessage());
-                                System.err.println("Falling back to musl (statically linked) variant...");
-                                String muslPath = "/" + arch + "/libua_parser_musl.so";
-                                File muslFile = extractLibrary(muslPath);
-                                if (muslFile != null) {
-                                    System.setProperty("jna.library.path", muslFile.getParent());
-                                    Native.register(interfaceClass, muslFile.getAbsolutePath());
-                                    System.out.println("Loaded native library [" + arch + "/musl] (fallback): " + muslFile.getAbsolutePath());
-                                    return;
-                                }
-                            }
-                            throw e;
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("Failed to load native library automatically: " + e.getMessage());
-            }
-        }
-        
-        Native.register(interfaceClass, LIB_NAME);
-    }
-
     static boolean isMusl() {
+        if (new File("/etc/alpine-release").exists()) return true;
         if (new File("/lib/ld-musl-x86_64.so.1").exists()) return true;
         if (new File("/lib/ld-musl-aarch64.so.1").exists()) return true;
 
@@ -92,18 +40,18 @@ public class NativeLoader {
                 String altPath = resourcePath.startsWith("/") ? resourcePath.substring(1) : resourcePath;
                 in = NativeLoader.class.getClassLoader().getResourceAsStream(altPath);
             }
-            
+
             if (in == null) {
                 return null;
             }
-            
+
             String suffix = ".so";
             if (resourcePath.endsWith(".dll")) suffix = ".dll";
             else if (resourcePath.endsWith(".dylib")) suffix = ".dylib";
-            
+
             File tempFile = Files.createTempFile("libua_parser", suffix).toFile();
             tempFile.deleteOnExit();
-            
+
             Files.copy(in, tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             return tempFile;
         } catch (IOException e) {
