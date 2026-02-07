@@ -36,22 +36,15 @@ public class NativeLoader {
 
                     if (libFile != null) {
                         try {
-                            System.setProperty("jna.library.path", libFile.getParent());
-                            Native.register(interfaceClass, libFile.getAbsolutePath());
-                            System.out.println("Loaded native library [" + arch + "/" + variant + "]: " + libFile.getAbsolutePath());
-                            return;
+                            UaParserLib loaded = Native.load(libFile.getAbsolutePath(), UaParserLib.class);
+                            return loaded;
                         } catch (UnsatisfiedLinkError e) {
-                            // glibc version mismatch — fall back to musl (statically linked)
-                            if (!variant.equals("musl")) {
-                                System.err.println("Failed to load " + variant + " library: " + e.getMessage());
-                                System.err.println("Falling back to musl (statically linked) variant...");
+                            if (!"musl".equals(variant)) {
                                 String muslPath = "/" + arch + "/libua_parser_musl.so";
-                                File muslFile = extractLibrary(muslPath);
+                                File muslFile = NativeLoader.extractLibrary(muslPath);
                                 if (muslFile != null) {
-                                    System.setProperty("jna.library.path", muslFile.getParent());
-                                    Native.register(interfaceClass, muslFile.getAbsolutePath());
-                                    System.out.println("Loaded native library [" + arch + "/musl] (fallback): " + muslFile.getAbsolutePath());
-                                    return;
+                                    UaParserLib loaded = Native.load(muslFile.getAbsolutePath(), UaParserLib.class);
+                                    return loaded;
                                 }
                             }
                             throw e;
@@ -67,6 +60,7 @@ public class NativeLoader {
     }
 
     static boolean isMusl() {
+        if (new File("/etc/alpine-release").exists()) return true;
         if (new File("/lib/ld-musl-x86_64.so.1").exists()) return true;
         if (new File("/lib/ld-musl-aarch64.so.1").exists()) return true;
 
