@@ -60,7 +60,7 @@ install:
     POM_FILE="clients/java/pom.xml"
 
     # 1. Update version
-    sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${VERSION}</version>|g" $POM_FILE
+    #sed -i "s|<version>[^<]*</version> <!-- Placeholder, managed by CI -->|<version>${VERSION}</version>|g" $POM_FILE
 
     # 2. Update groupId
     USER=${JITPACK_USER:-Octanium91}
