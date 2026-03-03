@@ -1,78 +1,87 @@
-//go:build js && wasm
+//go:build wasm && wasip1
 
 package main
 
 import (
 	"encoding/json"
-	"syscall/js"
+	"unsafe"
 
 	"github.com/Octanium91/ua-parser/pkg/core"
 )
 
 var parser *core.Parser
 
-func initUA(this js.Value, args []js.Value) interface{} {
-	if len(args) < 1 {
-		return "Missing configuration"
+// registry keeps track of allocated buffers to prevent GC from collecting them.
+var registry = make(map[uint32][]byte)
+
+//go:wasmexport malloc
+func malloc(size uint32) uint32 {
+	buf := make([]byte, size)
+	ptr := uint32(uintptr(unsafe.Pointer(&buf[0])))
+	registry[ptr] = buf
+	return ptr
+}
+
+//go:wasmexport free
+func free(ptr uint32) {
+	delete(registry, ptr)
+}
+
+//go:wasmexport initUA
+func initUA(ptr uint32, length uint32) int32 {
+	cfg := core.Config{
+		LRUCacheSize:      1000,
+		DisableAutoUpdate: true, // WASM environment usually doesn't have network access
 	}
 
-	configJSON := args[0].String()
-	var cfg core.Config
-	if configJSON != "" && configJSON != "undefined" && configJSON != "null" {
-		err := json.Unmarshal([]byte(configJSON), &cfg)
-		if err != nil {
-			return "Failed to unmarshal config: " + err.Error()
+	if length > 0 {
+		configBytes := (*[1 << 30]byte)(unsafe.Pointer(uintptr(ptr)))[:length:length]
+		if err := json.Unmarshal(configBytes, &cfg); err != nil {
+			// If invalid JSON, we'll just use the default config instead of failing hard
 		}
 	}
 
-	if cfg.LRUCacheSize == 0 {
-		cfg.LRUCacheSize = 1000
-	}
-
-	// For Wasm, we might want to disable auto-update by default if it's running in a restricted environment,
-	// but we'll follow the provided config.
 	p, err := core.New(cfg)
 	if err != nil {
-		return "Failed to initialize parser: " + err.Error()
+		return -1
 	}
 	parser = p
-	return nil
+	return 0
 }
 
-func parseUA(this js.Value, args []js.Value) interface{} {
+//go:wasmexport parseUA
+func parseUA(ptr uint32, length uint32) uint64 {
 	if parser == nil {
-		return `{"error": "Parser not initialized"}`
+		if initUA(0, 0) != 0 {
+			return 0
+		}
 	}
 
-	if len(args) < 1 {
-		return `{"error": "Missing payload"}`
-	}
+	// Read input from WASM memory
+	// Safe to use 1<<30 as a max limit for the slice header, won't actually allocate that much.
+	input := (*[1 << 30]byte)(unsafe.Pointer(uintptr(ptr)))[:length:length]
 
-	payloadJSON := args[0].String()
 	var payload struct {
 		UA      string            `json:"ua"`
 		Headers map[string]string `json:"headers"`
 	}
 
-	err := json.Unmarshal([]byte(payloadJSON), &payload)
-	if err != nil {
-		return `{"error": "Invalid payload: ` + err.Error() + `"}`
+	// Try to parse as JSON payload (which allows passing headers)
+	// Fallback to treating the entire input as a raw User-Agent string
+	if err := json.Unmarshal(input, &payload); err != nil || payload.UA == "" {
+		payload.UA = string(input)
+		payload.Headers = nil
 	}
 
 	result := parser.Parse(payload.UA, payload.Headers)
-	resBytes, err := json.Marshal(result)
-	if err != nil {
-		return `{"error": "Failed to marshal result"}`
-	}
+	resBytes, _ := json.Marshal(result)
 
-	return string(resBytes)
+	// Allocate buffer for the result to be read by the host
+	resPtr := malloc(uint32(len(resBytes)))
+	copy(registry[resPtr], resBytes)
+
+	// Return packed (length << 32) | ptr
+	return (uint64(len(resBytes)) << 32) | uint64(resPtr)
 }
 
-func main() {
-	c := make(chan struct{}, 0)
-
-	js.Global().Set("initUA", js.FuncOf(initUA))
-	js.Global().Set("parseUA", js.FuncOf(parseUA))
-
-	<-c
-}
+func main() {}

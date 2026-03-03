@@ -12,63 +12,30 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Universal User-Agent Parser Java Wrapper using JNA.
+ * Universal User-Agent Parser Java Wrapper with Native (JNA) and WASM fallback.
  */
 public class UaParser {
-    public interface UaParserLib extends Library {
-        Pointer Init(String configJSON);
-        Pointer Parse(String payloadJSON);
-        void FreeString(Pointer ptr);
-    }
-
-    private final UaParserLib lib;
+    private ParserBackend backend;
     private final Gson gson;
 
     public UaParser() {
         this.gson = new Gson();
-        this.lib = loadLibrary();
+        try {
+            // Пытаемся запустить на максимальной скорости
+            this.backend = new JnaBackend();
+        } catch (UnsatisfiedLinkError e) {
+            // Натив не завелся (мы в Alpine без gcompat)
+            System.err.println("WARN: Native UA-Parser library failed to load.");
+            System.err.println("WARN: Falling back to WebAssembly (WASM) mode for compatibility.");
+            System.err.println("WARN: ---> For maximum native performance on Alpine Linux, please install the compatibility layer by adding 'RUN apk add --no-cache gcompat' to your Dockerfile! <---");
+
+            this.backend = new WasmBackend();
+        }
     }
 
     public UaParser(String libPath) {
         this.gson = new Gson();
-        this.lib = Native.load(libPath, UaParserLib.class);
-    }
-
-    private static UaParserLib loadLibrary() {
-        if (Platform.isLinux()) {
-            String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
-                    (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
-
-            if (arch != null) {
-                String variant = NativeLoader.isMusl() ? "musl" : "glibc";
-                String resourcePath = "/" + arch + "/libua_parser_" + variant + ".so";
-
-                File libFile = NativeLoader.extractLibrary(resourcePath);
-                if (libFile == null) {
-                    resourcePath = "/" + arch + "/libua_parser.so";
-                    libFile = NativeLoader.extractLibrary(resourcePath);
-                }
-
-                if (libFile != null) {
-                    try {
-                        UaParserLib loaded = Native.load(libFile.getAbsolutePath(), UaParserLib.class);
-                        return loaded;
-                    } catch (UnsatisfiedLinkError e) {
-                        if (!"musl".equals(variant)) {
-                            String muslPath = "/" + arch + "/libua_parser_musl.so";
-                            File muslFile = NativeLoader.extractLibrary(muslPath);
-                            if (muslFile != null) {
-                                UaParserLib loaded = Native.load(muslFile.getAbsolutePath(), UaParserLib.class);
-                                return loaded;
-                            }
-                        }
-                        throw e;
-                    }
-                }
-            }
-        }
-
-        return Native.load("ua-parser", UaParserLib.class);
+        this.backend = new JnaBackend(libPath);
     }
 
     public static class Config {
@@ -139,12 +106,7 @@ public class UaParser {
      * Initializes the parser with a JSON configuration string.
      */
     public void init(String configJson) {
-        Pointer errPtr = lib.Init(configJson);
-        if (errPtr != null) {
-            String err = errPtr.getString(0);
-            lib.FreeString(errPtr);
-            throw new RuntimeException("Failed to initialize parser: " + err);
-        }
+        backend.init(configJson);
     }
 
     /**
@@ -166,12 +128,6 @@ public class UaParser {
      * Parses data and returns a JSON result string.
      */
     public String parse(String payloadJson) {
-        Pointer resPtr = lib.Parse(payloadJson);
-        if (resPtr != null) {
-            String res = resPtr.getString(0);
-            lib.FreeString(resPtr);
-            return res;
-        }
-        return null;
+        return backend.parse(payloadJson);
     }
 }

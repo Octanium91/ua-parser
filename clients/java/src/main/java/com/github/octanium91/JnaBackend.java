@@ -1,0 +1,67 @@
+package com.github.octanium91;
+
+import com.sun.jna.Library;
+import com.sun.jna.Native;
+import com.sun.jna.Platform;
+import com.sun.jna.Pointer;
+
+import java.io.File;
+
+public class JnaBackend implements ParserBackend {
+    public interface UaParserLib extends Library {
+        Pointer Init(String configJSON);
+        Pointer Parse(String payloadJSON);
+        void FreeString(Pointer ptr);
+    }
+
+    private final UaParserLib lib;
+
+    public JnaBackend() {
+        this.lib = loadLibrary();
+    }
+
+    public JnaBackend(String libPath) {
+        this.lib = Native.load(libPath, UaParserLib.class);
+    }
+
+    @Override
+    public void init(String configJson) {
+        Pointer errPtr = lib.Init(configJson);
+        if (errPtr != null) {
+            String err = errPtr.getString(0);
+            lib.FreeString(errPtr);
+            throw new RuntimeException("Failed to initialize JNA parser: " + err);
+        }
+    }
+
+    @Override
+    public String parse(String payloadJson) {
+        Pointer resPtr = lib.Parse(payloadJson);
+        if (resPtr != null) {
+            String res = resPtr.getString(0);
+            lib.FreeString(resPtr);
+            return res;
+        }
+        return null;
+    }
+
+    private static UaParserLib loadLibrary() {
+        if (Platform.isLinux()) {
+            String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
+                    (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
+
+            if (arch != null) {
+                // Загружаем стандартную библиотеку (glibc)
+                String resourcePath = "/" + arch + "/libua_parser.so";
+                File libFile = NativeLoader.extractLibrary(resourcePath);
+
+                if (libFile != null) {
+                    return Native.load(libFile.getAbsolutePath(), UaParserLib.class);
+                }
+            }
+        }
+
+        // Стандартный JNA-фоллбек для Windows, macOS или если файл не извлечен
+        return Native.load("ua-parser", UaParserLib.class);
+    }
+}

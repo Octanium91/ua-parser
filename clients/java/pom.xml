@@ -42,6 +42,17 @@
             <version>5.13.0</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.dylibso.chicory</groupId>
+            <artifactId>runtime</artifactId>
+            <version>0.0.14</version>
+        </dependency>
+        <dependency>
+            <groupId>com.dylibso.chicory</groupId>
+            <artifactId>wasi</artifactId>
+            <version>0.0.14</version>
+        </dependency>
+
         <!-- Gson for JSON serialization/deserialization -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -69,6 +80,7 @@
                     <include>**/*.dylib</include>
                     <include>**/*.yaml</include>
                     <include>**/*.json</include>
+                    <include>**/*.wasm</include>
                 </includes>
             </resource>
         </resources>

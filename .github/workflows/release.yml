@@ -79,7 +79,7 @@ jobs:
             output_lib: libua-parser-darwin.dylib
           # WebAssembly build
           - os: ubuntu-latest
-            goos: js
+            goos: wasip1
             goarch: wasm
             output_lib: ua-parser.wasm
 
@@ -105,44 +105,17 @@ jobs:
           if [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
             echo "Building Linux AMD64 (glibc)..."
             go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
-            
-            echo "Building Linux AMD64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app golang:1.26-alpine sh -c "\
-              apk add --no-cache gcc musl-dev && \
-              CGO_ENABLED=1 CGO_CFLAGS='-fPIC -ftls-model=global-dynamic' go build -buildmode=c-archive -ldflags='-s -w' -o ua-parser-linux-amd64-musl.a ./cmd/cshared/main.go && \
-              gcc -shared -fPIC -Wl,-Bsymbolic -o libua-parser-linux-amd64-musl.so \
-                -Wl,--whole-archive ua-parser-linux-amd64-musl.a -Wl,--no-whole-archive \
-                -Wl,-z,lazy -lpthread -lc && \
-              rm ua-parser-linux-amd64-musl.a"
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (glibc)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
             GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
-
-            echo "Building Linux ARM64 (musl/Alpine)..."
-            docker run --rm -v ${{ github.workspace }}:/app -w /app --platform linux/arm64 golang:1.26-alpine sh -c "\
-              apk add --no-cache gcc musl-dev && \
-              CGO_ENABLED=1 CGO_CFLAGS='-fPIC -ftls-model=global-dynamic' go build -buildmode=c-archive -ldflags='-s -w' -o ua-parser-linux-arm64-musl.a ./cmd/cshared/main.go && \
-              gcc -shared -fPIC -Wl,-Bsymbolic -o libua-parser-linux-arm64-musl.so \
-                -Wl,--whole-archive ua-parser-linux-arm64-musl.a -Wl,--no-whole-archive \
-                -Wl,-z,lazy -lpthread -lc && \
-              rm ua-parser-linux-arm64-musl.a"
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
-          elif [ "${{ matrix.goos }}" == "js" ]; then
-            echo "Building WebAssembly..."
-            # Install wasm-opt (binaryen) for size optimization
-            sudo apt-get update && sudo apt-get install -y binaryen
-            
-            GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm/main.go
-            
-            # Optimize WASM binary size
-            wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext ua-parser.wasm -o ua-parser.wasm
-            
-            # In Go 1.24+ wasm_exec.js moved to lib/wasm, earlier it was in misc/wasm
-            find $(go env GOROOT) -name wasm_exec.js -exec cp {} . \;
+          elif [ "${{ matrix.goos }}" == "wasip1" ]; then
+            echo "Building WebAssembly (WASI)..."
+            GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm/main.go
           else
             LDFLAGS="-s -w"
             if [ "${{ matrix.goos }}" == "windows" ]; then
@@ -157,10 +130,8 @@ jobs:
           name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}
           path: |
             ${{ matrix.output_lib }}
-            libua-parser-linux-*-musl.so
             libua-parser-linux-*-glibc.so
             libua-parser-darwin-*.dylib
-            wasm_exec.js
             *.h
           if-no-files-found: warn
 
@@ -253,8 +224,6 @@ jobs:
 
           # Remove headers and other non-library files from JAR resources
           rm -f clients/java/src/main/resources/*.h
-          rm -f clients/java/src/main/resources/wasm_exec.js
-          rm -f clients/java/src/main/resources/ua-parser.wasm
           
           # Remove server executables (they don't belong in the client lib)
           rm -f clients/java/src/main/resources/ua-server*
@@ -276,13 +245,6 @@ jobs:
               echo "ERROR: Linux x86-64 Glibc lib not found!"
           fi
 
-          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ]; then
-              echo "Found Linux x86-64 Musl lib, moving..."
-              mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so
-          else
-              echo "WARNING: Linux x86-64 Musl lib not found!"
-          fi
-          
           # Linux aarch64
           mkdir -p clients/java/src/main/resources/linux-aarch64
           if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so ]; then
@@ -290,18 +252,13 @@ jobs:
               mv clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so
           fi
 
-          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-musl.so ]; then
-              echo "Found Linux ARM64 Musl lib, moving..."
-              mv clients/java/src/main/resources/libua-parser-linux-arm64-musl.so clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so
-          fi
-          
-          # Fallback for standard arm64 if no glibc/musl suffix (e.g. from other builds)
+          # Fallback for standard arm64 if no glibc suffix (e.g. from other builds)
           if [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ]; then
               echo "Found generic Linux ARM64 lib, moving..."
               mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua_parser.so
           fi
           
-          # Standard JNA fallback (without glibc/musl suffix)
+          # Standard JNA fallback (without glibc suffix)
           cp clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser.so 2>/dev/null || true
           cp clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser.so 2>/dev/null || true
 
@@ -330,27 +287,28 @@ jobs:
           
           # Linux x86-64
           [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_glibc.so")
-          [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_musl.so")
           [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser.so")
           
           # Linux aarch64
           [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_glibc.so")
-          [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_musl.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_musl.so")
           [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser.so")
           
           # macOS
           [ ! -f clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-x86-64/libua-parser.dylib")
           [ ! -f clients/java/src/main/resources/darwin-aarch64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-aarch64/libua-parser.dylib")
+
+          # WASM (Critical for this release)
+          [ ! -f clients/java/src/main/resources/ua-parser.wasm ] && MISSING_LIBS+=("ua-parser.wasm")
           
           if [ ${#MISSING_LIBS[@]} -ne 0 ]; then
-            echo "CRITICAL ERROR: The following required native libraries are missing:"
+            echo "CRITICAL ERROR: The following required libraries are missing:"
             for lib in "${MISSING_LIBS[@]}"; do
               echo "  - $lib"
             done
             exit 1
           fi
           
-          echo "All critical native libraries verified successfully."
+          echo "All critical libraries verified successfully."
 
       - name: Update Maven Version & Group ID
         run: |
@@ -526,10 +484,8 @@ jobs:
             release-artifacts/ua-server-linux-arm64
             release-artifacts/ua-server-windows-amd64.exe
             release-artifacts/libua-parser-linux-amd64-glibc.so
-            release-artifacts/libua-parser-linux-amd64-musl.so
             release-artifacts/libua-parser-linux-amd64.h
             release-artifacts/libua-parser-linux-arm64-glibc.so
-            release-artifacts/libua-parser-linux-arm64-musl.so
             release-artifacts/libua-parser-linux-arm64.h
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h
