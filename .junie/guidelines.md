@@ -13,7 +13,7 @@
 - Any changes to the core logic or infrastructure should be verified against existing CI workflows.
 
 ## Go Version
-- The project uses **Go 1.25** as the minimum version.
+- The project uses **Go 1.26** as the minimum version.
 - For **musl/Alpine Linux** builds, Go's `c-shared` buildmode has a known TLS incompatibility with `dlopen()` ([golang/go#54805](https://github.com/golang/go/issues/54805)). The workaround is a **two-step build**: first `c-archive` (`.a`), then `gcc -shared` to produce the final `.so`. This avoids the `initial-exec TLS` error. Do not revert to a single-step `c-shared` build for musl targets unless the upstream Go issue is confirmed fixed in the used Go version.
 - This constraint applies to all build targets: `go.mod`, `Dockerfile`, CI workflows (`release.yml`), and Docker images used for musl builds.
 
