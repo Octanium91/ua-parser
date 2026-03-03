@@ -8,7 +8,8 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
   - **Native Library**: Importable Go package.
   - **Microservice**: Ready-to-use HTTP REST API server.
   - **Multi-Language Support**: Official wrappers for **Python**, **Node.js**, and **Java** (located in `/clients`).
-  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64**, and **windows/amd64**.
+  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64**, **windows/amd64**, and **WebAssembly (WASI)**.
+- **Graceful Degradation (Java)**: Smart client architecture that attempts to load ultra-fast Native JNI drivers, but transparently falls back to a bundled pure-Java WebAssembly engine if native libraries are incompatible (e.g., on bare Alpine Linux).
 - **Client Hints Priority**: Automatically uses `Sec-CH-UA` headers with **highest priority** for precise OS and device detection (e.g., distinguishing Windows 11 from Windows 10 where the UA string might be ambiguous).
 - **Hot-Swap**: Background `regexes.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
@@ -33,6 +34,22 @@ For Node.js and Java, you must configure your package manager to find the packag
 | **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
 | **Java**    | Configure GitHub repository | [Java Setup](./clients/java#installation) |
 | **Python** (not tested) | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
+
+### Java Client Special Features (Native + WASM)
+
+#### Performance via Go Core
+Parsing User-Agent strings efficiently on pure Java (e.g., using `RegExp` or `Trie`) can be extremely memory-intensive, often consuming 2GB+ of RAM. To solve this, our Java client uses a high-performance core written in Go.
+
+#### Hybrid Architecture (Graceful Degradation)
+
+1. **Primary Route (Native)**: By default, the client uses **JNA** to load a native shared library (`.so`, `.dll`, or `.dylib`) for glibc-based Linux, Windows, or macOS. This provides maximum throughput and minimal overhead.
+2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
+
+> [!IMPORTANT]
+> **⚠️ Alpine Linux Users:** To achieve maximum performance and prevent the WASM fallback, install the glibc compatibility layer in your Dockerfile:
+> ```dockerfile
+> RUN apk add --no-cache gcompat
+> ```
 
 ---
 
@@ -189,6 +206,7 @@ The library can be compiled into a shared library for use with other languages v
 - **Linux**: `libua-parser-linux-amd64.so`, `libua-parser-linux-arm64.so`
 - **Windows**: `ua-parser-windows-amd64.dll`
 - **macOS**: `libua-parser-darwin-amd64.dylib`, `libua-parser-darwin-arm64.dylib`
+- **WebAssembly**: `ua-parser.wasm` (Compiled for WASI, used as a universal fallback for the Java client).
 
 These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically for all supported architectures.
 
