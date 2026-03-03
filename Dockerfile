@@ -25,8 +25,9 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o
 # Build the C-shared library (requires CGO)
 # Using two-step build for Linux/musl to avoid initial-exec TLS relocation issues
 RUN if [ "$TARGETOS" = "linux" ]; then \
-      CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-archive -ldflags="-s -w" -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
-      gcc -shared -o ua-parser.so -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive -Wl,-z,lazy; \
+      CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-archive -ldflags="-s -w" -o ua-parser.a ./cmd/cshared/main.go && \
+      gcc -shared -o ua-parser.so -Wl,--whole-archive ua-parser.a -Wl,--no-whole-archive -Wl,-z,lazy && \
+      rm ua-parser.a; \
     else \
       CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go; \
     fi
