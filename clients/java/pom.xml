@@ -49,6 +49,11 @@
         </dependency>
         <dependency>
             <groupId>com.dylibso.chicory</groupId>
+            <artifactId>wasm</artifactId>
+            <version>1.7.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.dylibso.chicory</groupId>
             <artifactId>wasi</artifactId>
             <version>1.7.2</version>
         </dependency>

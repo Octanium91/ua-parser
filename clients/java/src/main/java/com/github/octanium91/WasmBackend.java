@@ -1,36 +1,37 @@
 package com.github.octanium91;
 
 import com.dylibso.chicory.runtime.Instance;
-import com.dylibso.chicory.runtime.Module;
+import com.dylibso.chicory.runtime.ImportValues;
 import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.runtime.ExportFunction;
-import com.dylibso.chicory.wasm.types.Value;
-import com.dylibso.chicory.wasi.Wasi;
-import com.dylibso.chicory.wasi.WasiOptions;
+import com.dylibso.chicory.wasm.Parser;
+import com.dylibso.chicory.wasm.WasmModule;
+import com.dylibso.chicory.wasi.WasiContext;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 public class WasmBackend implements ParserBackend {
-    private final Module module;
+    private final WasmModule module;
     private final Instance instance;
     private final Memory memory;
     private final ExportFunction malloc;
     private final ExportFunction free;
     private final ExportFunction initUA;
     private final ExportFunction parseUA;
-    private final Wasi wasi;
+    private final WasiContext wasi;
 
     public WasmBackend() {
         try {
             InputStream wasmInput = getClass().getResourceAsStream("/ua-parser.wasm");
             if (wasmInput == null) {
-                // Try alternate location if any, but standard is root of resources
                 throw new RuntimeException("ua-parser.wasm not found in resources");
             }
 
-            this.module = Module.builder(wasmInput).build();
-            this.wasi = new Wasi(WasiOptions.builder().build());
-            this.instance = module.instantiate(wasi.toImportValues());
+            this.module = Parser.parse(wasmInput);
+            this.wasi = WasiContext.builder().build();
+            this.instance = Instance.builder(module)
+                    .withImportValues(wasi.toImportValues())
+                    .build();
             this.memory = instance.memory();
             this.malloc = instance.export("malloc");
             this.free = instance.export("free");
@@ -39,7 +40,7 @@ public class WasmBackend implements ParserBackend {
 
             // Initialize parser in WASM with default config
             if (initUA != null) {
-                initUA.apply(Value.i32(0), Value.i32(0));
+                initUA.apply(0, 0);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
@@ -50,12 +51,12 @@ public class WasmBackend implements ParserBackend {
     public void init(String configJson) {
         if (initUA == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
-        long ptr = malloc.apply(Value.i32(configBytes.length))[0].asLong();
+        long ptr = malloc.apply((long) configBytes.length)[0];
         try {
             memory.write((int)ptr, configBytes);
-            initUA.apply(Value.i32((int)ptr), Value.i32(configBytes.length));
+            initUA.apply(ptr, (long) configBytes.length);
         } finally {
-            free.apply(Value.i32((int)ptr));
+            free.apply(ptr);
         }
     }
 
@@ -65,14 +66,14 @@ public class WasmBackend implements ParserBackend {
         int len = inputBytes.length;
         
         // Allocate memory in WASM
-        long ptr = malloc.apply(Value.i32(len))[0].asLong();
+        long ptr = malloc.apply((long) len)[0];
         try {
             // Write to WASM memory
             memory.write((int)ptr, inputBytes);
             
             // Call parseUA(ptr, len)
             // It returns a uint64: (len << 32) | ptr
-            long resultPacked = parseUA.apply(Value.i32((int)ptr), Value.i32(len))[0].asLong();
+            long resultPacked = parseUA.apply(ptr, (long) len)[0];
             
             int resLen = (int)(resultPacked >> 32);
             int resPtr = (int)(resultPacked & 0xFFFFFFFFL);
@@ -83,12 +84,12 @@ public class WasmBackend implements ParserBackend {
             String result = new String(resBytes, StandardCharsets.UTF_8);
             
             // Free the result buffer in WASM
-            free.apply(Value.i32(resPtr));
+            free.apply((long) resPtr);
             
             return result;
         } finally {
             // Free the input buffer in WASM
-            free.apply(Value.i32((int)ptr));
+            free.apply(ptr);
         }
     }
 }
