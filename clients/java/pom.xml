@@ -45,12 +45,12 @@
         <dependency>
             <groupId>com.dylibso.chicory</groupId>
             <artifactId>runtime</artifactId>
-            <version>0.0.14</version>
+            <version>1.7.2</version>
         </dependency>
         <dependency>
             <groupId>com.dylibso.chicory</groupId>
             <artifactId>wasi</artifactId>
-            <version>0.0.14</version>
+            <version>1.7.2</version>
         </dependency>
 
         <!-- Gson for JSON serialization/deserialization -->
