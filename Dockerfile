@@ -23,7 +23,13 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o ua-server ./cmd/server/main.go
 
 # Build the C-shared library (requires CGO)
-RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go
+# Using two-step build for Linux/musl to avoid initial-exec TLS relocation issues
+RUN if [ "$TARGETOS" = "linux" ]; then \
+      CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-archive -ldflags="-s -w" -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
+      gcc -shared -o ua-parser.so -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive -Wl,-z,lazy; \
+    else \
+      CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go; \
+    fi
 
 # Stage 2: Final image
 FROM alpine:latest

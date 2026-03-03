@@ -112,7 +112,7 @@ jobs:
               CGO_ENABLED=1 go build -buildmode=c-archive -ldflags='-s -w' -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
               gcc -shared -o libua-parser-linux-amd64-musl.so \
                 -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive \
-                -Wl,-Bstatic -lpthread -lc -Wl,-Bdynamic"
+                -Wl,-z,lazy"
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (glibc)..."
             sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
@@ -124,7 +124,7 @@ jobs:
               CGO_ENABLED=1 go build -buildmode=c-archive -ldflags='-s -w' -o /tmp/libua_parser.a ./cmd/cshared/main.go && \
               gcc -shared -o libua-parser-linux-arm64-musl.so \
                 -Wl,--whole-archive /tmp/libua_parser.a -Wl,--no-whole-archive \
-                -Wl,-Bstatic -lpthread -lc -Wl,-Bdynamic"
+                -Wl,-z,lazy"
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
