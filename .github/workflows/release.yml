@@ -105,16 +105,22 @@ jobs:
           if [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
             echo "Building Linux AMD64 (glibc) in Docker with older glibc for broad compatibility..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
-              golang:1.26-bullseye bash -c '
-                apt-get update && apt-get install -y gcc && \
+              debian:bullseye bash -c '
+                apt-get update && apt-get install -y gcc wget ca-certificates && \
+                wget -q https://go.dev/dl/go1.26.0.linux-amd64.tar.gz && \
+                tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz && \
+                export PATH="/usr/local/go/bin:$PATH" && \
                 go run ./cmd/gen-json/main.go && \
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
             echo "Building Linux ARM64 (glibc) in Docker with older glibc for broad compatibility..."
             docker run --rm --platform linux/arm64 -v "${{ github.workspace }}:/workspace" -w /workspace \
-              golang:1.26-bullseye bash -c '
-                apt-get update && apt-get install -y gcc && \
+              debian:bullseye bash -c '
+                apt-get update && apt-get install -y gcc wget ca-certificates && \
+                wget -q https://go.dev/dl/go1.26.0.linux-arm64.tar.gz && \
+                tar -C /usr/local -xzf go1.26.0.linux-arm64.tar.gz && \
+                export PATH="/usr/local/go/bin:$PATH" && \
                 go run ./cmd/gen-json/main.go && \
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
               '
