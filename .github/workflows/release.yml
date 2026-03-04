@@ -115,16 +115,16 @@ jobs:
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64.so ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
-            echo "Building Linux ARM64 in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
-            docker run --rm --platform linux/arm64 -v "${{ github.workspace }}:/workspace" -w /workspace \
+            echo "Building Linux ARM64 via cross-compilation in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
+            docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
               debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc wget ca-certificates && \
-                wget -q https://go.dev/dl/go1.26.0.linux-arm64.tar.gz && \
-                tar -C /usr/local -xzf go1.26.0.linux-arm64.tar.gz && \
-                rm go1.26.0.linux-arm64.tar.gz && \
+                apt-get update && apt-get install -y gcc-aarch64-linux-gnu wget ca-certificates && \
+                wget -q https://go.dev/dl/go1.26.0.linux-amd64.tar.gz && \
+                tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz && \
+                rm go1.26.0.linux-amd64.tar.gz && \
                 export PATH="/usr/local/go/bin:$PATH" && \
                 go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
+                CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
