@@ -6,6 +6,7 @@ import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.runtime.ExportFunction;
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.WasmModule;
+import com.dylibso.chicory.wasm.types.Value;
 import com.dylibso.chicory.wasi.WasiOptions;
 import com.dylibso.chicory.wasi.WasiPreview1;
 
@@ -73,7 +74,7 @@ public class WasmBackend implements ParserBackend {
 
             // Инициализация парсера
             if (initUA != null) {
-                initUA.apply(0L, 0L);
+                initUA.apply(Value.i32(0).handle(), Value.i32(0).handle());
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
@@ -84,10 +85,10 @@ public class WasmBackend implements ParserBackend {
     public void init(String configJson) {
         if (initUA == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
-        long ptr = malloc.apply((long)configBytes.length)[0];
+        long ptr = malloc.apply(Value.i32(configBytes.length).handle())[0];
         try {
             memory.write((int)ptr, configBytes);
-            initUA.apply(ptr, (long)configBytes.length);
+            initUA.apply(ptr, Value.i32(configBytes.length).handle());
         } finally {
             free.apply(ptr);
         }
@@ -99,24 +100,23 @@ public class WasmBackend implements ParserBackend {
         int len = inputBytes.length;
 
         // Выделяем память внутри WASM
-        long ptr = malloc.apply((long)len)[0];
+        long ptr = malloc.apply(Value.i32(len).handle())[0];
         try {
             memory.write((int)ptr, inputBytes);
 
-            long resultPacked = parseUA.apply(ptr, (long)len)[0];
+            long resultPacked = parseUA.apply(ptr, Value.i32(len).handle())[0];
 
             int resLen = (int)(resultPacked >> 32);
             int resPtr = (int)(resultPacked & 0xFFFFFFFFL);
 
             if (resPtr == 0) return null;
 
-            // Здесь джун сделал всё верно — метод readBytes читает массив нужной длины
-            byte[] resBytes = memory.readBytes(resPtr, resLen);
-            String result = new String(resBytes, StandardCharsets.UTF_8);
-
-            free.apply((long)resPtr);
-
-            return result;
+            try {
+                byte[] resBytes = memory.readBytes(resPtr, resLen);
+                return new String(resBytes, StandardCharsets.UTF_8);
+            } finally {
+                free.apply(Value.i32(resPtr).handle());
+            }
         } finally {
             free.apply(ptr);
         }
