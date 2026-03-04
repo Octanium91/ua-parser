@@ -6,6 +6,7 @@ import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.runtime.ExportFunction;
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.WasmModule;
+import com.dylibso.chicory.wasm.types.Value;
 import com.dylibso.chicory.wasi.WasiOptions;
 import com.dylibso.chicory.wasi.WasiPreview1;
 
@@ -32,8 +33,11 @@ public class WasmBackend implements ParserBackend {
 
             this.module = Parser.parse(wasmInput);
 
-            // 1. По-новому инициализируем WASI
-            WasiOptions options = WasiOptions.builder().build();
+            // 1. По-новому инициализируем WASI (прокидываем потоки для логов)
+            WasiOptions options = WasiOptions.builder()
+                    .withStdout(System.out)
+                    .withStderr(System.err)
+                    .build();
             this.wasi = WasiPreview1.builder().withOptions(options).build();
 
             // 2. Оборачиваем WASI-функции в ImportValues
@@ -52,9 +56,25 @@ public class WasmBackend implements ParserBackend {
             this.initUA = instance.export("initUA");
             this.parseUA = instance.export("parseUA");
 
+            // Инициализация рантайма Go (через _initialize для WASI reactor или _start для command)
+            ExportFunction initialize = instance.export("_initialize");
+            if (initialize != null) {
+                initialize.apply();
+            } else {
+                ExportFunction start = instance.export("_start");
+                if (start != null) {
+                    // Go WASM command initialization
+                    try {
+                        start.apply();
+                    } catch (Exception e) {
+                        // Ignore _start exit errors if it's not a true reactor
+                    }
+                }
+            }
+
             // Инициализация парсера
             if (initUA != null) {
-                initUA.apply(0, 0);
+                initUA.apply(Value.i32(0), Value.i32(0));
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
@@ -65,12 +85,12 @@ public class WasmBackend implements ParserBackend {
     public void init(String configJson) {
         if (initUA == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
-        long ptr = malloc.apply((long) configBytes.length)[0];
+        long ptr = malloc.apply(Value.i32(configBytes.length))[0].asLong();
         try {
             memory.write((int)ptr, configBytes);
-            initUA.apply(ptr, (long) configBytes.length);
+            initUA.apply(Value.i32((int)ptr), Value.i32(configBytes.length));
         } finally {
-            free.apply(ptr);
+            free.apply(Value.i32((int)ptr));
         }
     }
 
@@ -80,11 +100,11 @@ public class WasmBackend implements ParserBackend {
         int len = inputBytes.length;
 
         // Выделяем память внутри WASM
-        long ptr = malloc.apply((long) len)[0];
+        long ptr = malloc.apply(Value.i32(len))[0].asLong();
         try {
             memory.write((int)ptr, inputBytes);
 
-            long resultPacked = parseUA.apply(ptr, (long) len)[0];
+            long resultPacked = parseUA.apply(Value.i32((int)ptr), Value.i32(len))[0].asLong();
 
             int resLen = (int)(resultPacked >> 32);
             int resPtr = (int)(resultPacked & 0xFFFFFFFFL);
@@ -95,11 +115,11 @@ public class WasmBackend implements ParserBackend {
             byte[] resBytes = memory.readBytes(resPtr, resLen);
             String result = new String(resBytes, StandardCharsets.UTF_8);
 
-            free.apply((long) resPtr);
+            free.apply(Value.i32(resPtr));
 
             return result;
         } finally {
-            free.apply(ptr);
+            free.apply(Value.i32((int)ptr));
         }
     }
 }

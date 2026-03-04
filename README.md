@@ -35,13 +35,12 @@ For Node.js and Java, you must configure your package manager to find the packag
 | **Java**    | Configure GitHub repository | [Java Setup](./clients/java#installation) |
 | **Python** (not tested) | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
-### Java Client Special Features (Native + WASM)
+### Hybrid Execution (Java)
 
 #### Performance via Go Core
 Parsing User-Agent strings efficiently on pure Java (e.g., using `RegExp` or `Trie`) can be extremely memory-intensive, often consuming 2GB+ of RAM. To solve this, our Java client uses a high-performance core written in Go.
 
-#### Hybrid Architecture (Graceful Degradation)
-
+#### Graceful Degradation (Native + WASM)
 1. **Primary Route (Native)**: By default, the client uses **JNA** to load a native shared library (`.so`, `.dll`, or `.dylib`) for glibc-based Linux, Windows, or macOS. This provides maximum throughput and minimal overhead.
 2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
 

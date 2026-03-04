@@ -16,6 +16,9 @@ var registry = make(map[uint32][]byte)
 
 //go:wasmexport malloc
 func malloc(size uint32) uint32 {
+	if size == 0 {
+		return 0
+	}
 	buf := make([]byte, size)
 	ptr := uint32(uintptr(unsafe.Pointer(&buf[0])))
 	registry[ptr] = buf
