@@ -103,27 +103,12 @@ jobs:
           CGO_ENABLED: 1
         run: |
           if [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
-            echo "Building Linux AMD64 (glibc) in Docker with older glibc for broad compatibility..."
-            docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
-              debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc wget ca-certificates && \
-                wget -q https://go.dev/dl/go1.26.0.linux-amd64.tar.gz && \
-                tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz && \
-                export PATH="/usr/local/go/bin:$PATH" && \
-                go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-glibc.so ./cmd/cshared/main.go
-              '
+            echo "Building Linux AMD64..."
+            go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64.so ./cmd/cshared/main.go
           elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
-            echo "Building Linux ARM64 (glibc) in Docker with older glibc for broad compatibility..."
-            docker run --rm --platform linux/arm64 -v "${{ github.workspace }}:/workspace" -w /workspace \
-              debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc wget ca-certificates && \
-                wget -q https://go.dev/dl/go1.26.0.linux-arm64.tar.gz && \
-                tar -C /usr/local -xzf go1.26.0.linux-arm64.tar.gz && \
-                export PATH="/usr/local/go/bin:$PATH" && \
-                go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-glibc.so ./cmd/cshared/main.go
-              '
+            echo "Building Linux ARM64..."
+            sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS Universal..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
@@ -145,7 +130,7 @@ jobs:
           name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}
           path: |
             ${{ matrix.output_lib }}
-            libua-parser-linux-*-glibc.so
+            libua-parser-linux-*.so
             libua-parser-darwin-*.dylib
             *.h
           if-no-files-found: warn
@@ -253,29 +238,19 @@ jobs:
           
           # Linux x86-64
           mkdir -p clients/java/src/main/resources/linux-x86-64
-          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so ]; then
-              echo "Found Linux x86-64 Glibc lib, moving..."
-              mv clients/java/src/main/resources/libua-parser-linux-amd64-glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so
+          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64.so ]; then
+              echo "Found Linux x86-64 lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-amd64.so clients/java/src/main/resources/linux-x86-64/libua_parser.so
           else
-              echo "ERROR: Linux x86-64 Glibc lib not found!"
+              echo "ERROR: Linux x86-64 lib not found!"
           fi
 
           # Linux aarch64
           mkdir -p clients/java/src/main/resources/linux-aarch64
-          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so ]; then
-              echo "Found Linux ARM64 Glibc lib, moving..."
-              mv clients/java/src/main/resources/libua-parser-linux-arm64-glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so
-          fi
-
-          # Fallback for standard arm64 if no glibc suffix (e.g. from other builds)
           if [ -f clients/java/src/main/resources/libua-parser-linux-arm64.so ]; then
-              echo "Found generic Linux ARM64 lib, moving..."
+              echo "Found Linux ARM64 lib, moving..."
               mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua_parser.so
           fi
-          
-          # Standard JNA fallback (without glibc suffix)
-          cp clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so clients/java/src/main/resources/linux-x86-64/libua_parser.so 2>/dev/null || true
-          cp clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so clients/java/src/main/resources/linux-aarch64/libua_parser.so 2>/dev/null || true
 
           # macOS
           mkdir -p clients/java/src/main/resources/darwin-x86-64
@@ -301,11 +276,9 @@ jobs:
           [ ! -f clients/java/src/main/resources/win32-x86-64/ua-parser.dll ] && MISSING_LIBS+=("win32-x86-64/ua-parser.dll")
           
           # Linux x86-64
-          [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser_glibc.so")
           [ ! -f clients/java/src/main/resources/linux-x86-64/libua_parser.so ] && MISSING_LIBS+=("linux-x86-64/libua_parser.so")
           
           # Linux aarch64
-          [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser_glibc.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser_glibc.so")
           [ ! -f clients/java/src/main/resources/linux-aarch64/libua_parser.so ] && MISSING_LIBS+=("linux-aarch64/libua_parser.so")
           
           # macOS
@@ -498,9 +471,9 @@ jobs:
             release-artifacts/ua-server-linux-amd64
             release-artifacts/ua-server-linux-arm64
             release-artifacts/ua-server-windows-amd64.exe
-            release-artifacts/libua-parser-linux-amd64-glibc.so
+            release-artifacts/libua-parser-linux-amd64.so
             release-artifacts/libua-parser-linux-amd64.h
-            release-artifacts/libua-parser-linux-arm64-glibc.so
+            release-artifacts/libua-parser-linux-arm64.so
             release-artifacts/libua-parser-linux-arm64.h
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h
