@@ -6,7 +6,6 @@ import com.dylibso.chicory.runtime.Memory;
 import com.dylibso.chicory.runtime.ExportFunction;
 import com.dylibso.chicory.wasm.Parser;
 import com.dylibso.chicory.wasm.WasmModule;
-import com.dylibso.chicory.wasm.types.Value;
 import com.dylibso.chicory.wasi.WasiOptions;
 import com.dylibso.chicory.wasi.WasiPreview1;
 
@@ -74,7 +73,7 @@ public class WasmBackend implements ParserBackend {
 
             // Инициализация парсера
             if (initUA != null) {
-                initUA.apply(Value.i32(0), Value.i32(0));
+                initUA.apply(0L, 0L);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
@@ -85,12 +84,12 @@ public class WasmBackend implements ParserBackend {
     public void init(String configJson) {
         if (initUA == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
-        long ptr = malloc.apply(Value.i32(configBytes.length))[0].asLong();
+        long ptr = malloc.apply((long)configBytes.length)[0];
         try {
             memory.write((int)ptr, configBytes);
-            initUA.apply(Value.i32((int)ptr), Value.i32(configBytes.length));
+            initUA.apply(ptr, (long)configBytes.length);
         } finally {
-            free.apply(Value.i32((int)ptr));
+            free.apply(ptr);
         }
     }
 
@@ -100,11 +99,11 @@ public class WasmBackend implements ParserBackend {
         int len = inputBytes.length;
 
         // Выделяем память внутри WASM
-        long ptr = malloc.apply(Value.i32(len))[0].asLong();
+        long ptr = malloc.apply((long)len)[0];
         try {
             memory.write((int)ptr, inputBytes);
 
-            long resultPacked = parseUA.apply(Value.i32((int)ptr), Value.i32(len))[0].asLong();
+            long resultPacked = parseUA.apply(ptr, (long)len)[0];
 
             int resLen = (int)(resultPacked >> 32);
             int resPtr = (int)(resultPacked & 0xFFFFFFFFL);
@@ -115,11 +114,11 @@ public class WasmBackend implements ParserBackend {
             byte[] resBytes = memory.readBytes(resPtr, resLen);
             String result = new String(resBytes, StandardCharsets.UTF_8);
 
-            free.apply(Value.i32(resPtr));
+            free.apply((long)resPtr);
 
             return result;
         } finally {
-            free.apply(Value.i32((int)ptr));
+            free.apply(ptr);
         }
     }
 }
