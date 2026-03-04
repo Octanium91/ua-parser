@@ -44,7 +44,8 @@ Our Java client is designed to provide a significantly lower memory footprint an
 
 #### Graceful Degradation (Native + WASM)
 1. **Primary Route (Native)**: By default, the client uses **JNA** to load a native shared library (`.so`, `.dll`, or `.dylib`) for glibc-based Linux, Windows, or macOS. This provides maximum throughput and minimal overhead.
-2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
+   - **Linux Compatibility**: Native libraries are compiled with **GLIBC 2.31** (Ubuntu 20.04) to ensure compatibility with a wide range of distributions, including Amazon Linux 2023, Debian 11+, and RHEL 8+.
+2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`, or older systems with outdated GLIBC), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
 
 > [!NOTE]
 > **Performance Note on WASM Mode:** The first initialization of the WASM engine (first call to `init()` or `parse()`) can take **5-15 seconds**. This time is required for the interpreter to process the embedded regex database. Subsequent calls will be handled at normal operational speeds.

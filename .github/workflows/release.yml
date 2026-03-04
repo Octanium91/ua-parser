@@ -61,11 +61,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             goos: linux
             goarch: amd64
             output_lib: libua-parser-linux-amd64.so
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             goos: linux
             goarch: arm64
             output_lib: libua-parser-linux-arm64.so
@@ -78,7 +78,7 @@ jobs:
             goarch: "universal"
             output_lib: libua-parser-darwin.dylib
           # WebAssembly build
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             goos: wasip1
             goarch: wasm
             output_lib: ua-parser.wasm
