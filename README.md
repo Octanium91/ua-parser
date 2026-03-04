@@ -37,15 +37,20 @@ For Node.js and Java, you must configure your package manager to find the packag
 
 ### Hybrid Execution (Java)
 
+Our Java client requires **Java 11 or higher**.
+
 #### Performance via Go Core
-Parsing User-Agent strings efficiently on pure Java (e.g., using `RegExp` or `Trie`) can be extremely memory-intensive, often consuming 2GB+ of RAM. To solve this, our Java client uses a high-performance core written in Go.
+Our Java client is designed to provide a significantly lower memory footprint and better performance compared to pure Java alternatives by leveraging a high-performance core written in Go.
 
 #### Graceful Degradation (Native + WASM)
 1. **Primary Route (Native)**: By default, the client uses **JNA** to load a native shared library (`.so`, `.dll`, or `.dylib`) for glibc-based Linux, Windows, or macOS. This provides maximum throughput and minimal overhead.
 2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
 
+> [!NOTE]
+> **Performance Note on WASM Mode:** The first initialization of the WASM engine (first call to `init()` or `parse()`) can take **5-15 seconds**. This time is required for the interpreter to process the embedded regex database. Subsequent calls will be handled at normal operational speeds.
+
 > [!IMPORTANT]
-> **⚠️ Alpine Linux Users:** To achieve maximum performance and prevent the WASM fallback, install the glibc compatibility layer in your Dockerfile:
+> **⚠️ Alpine Linux Users:** To achieve maximum performance and **disable the WASM fallback**, install the `gcompat` library in your Dockerfile. This will enable the high-speed JNA driver:
 > ```dockerfile
 > RUN apk add --no-cache gcompat
 > ```
