@@ -107,7 +107,7 @@ jobs:
             echo "Building Linux AMD64 in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
               debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc && \
+                apt-get update && apt-get install -y gcc ca-certificates && \
                 export PATH="/usr/local/go/bin:$PATH" && \
                 go run ./cmd/gen-json/main.go && \
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64.so ./cmd/cshared/main.go
@@ -116,7 +116,7 @@ jobs:
             echo "Building Linux ARM64 via cross-compilation in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
               debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc-aarch64-linux-gnu && \
+                apt-get update && apt-get install -y gcc-aarch64-linux-gnu ca-certificates && \
                 export PATH="/usr/local/go/bin:$PATH" && \
                 CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
               '
