@@ -27,3 +27,5 @@ Thumbs.db
 
 # Generated resources
 pkg/core/resources/regexes.json
+/clients/node/node_modules/
+/clients/node/package-lock.json

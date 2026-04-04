@@ -33,9 +33,31 @@ class UaParser {
         if (isBrowser) {
             await this._initWasm(config);
         } else {
-            this._initNode(config);
+            try {
+                this._initNode(config);
+            } catch (nativeError) {
+                // Native library failed — try WASM fallback
+                const wasmFile = path.join(__dirname, 'ua-parser.wasm');
+                if (fs.existsSync(wasmFile)) {
+                    console.warn('WARN: Native UA-Parser library failed to load: ' + nativeError.message);
+                    if (this._isMusl()) {
+                        console.warn('WARN: Detected musl libc (Alpine Linux). Go c-shared libraries require glibc.');
+                    }
+                    console.warn('WARN: Falling back to WebAssembly (WASM) mode.');
+                    this.isWasm = true;
+                    await this._initWasmNode(config, wasmFile);
+                } else {
+                    throw nativeError;
+                }
+            }
         }
         this.isInitialized = true;
+    }
+
+    _isMusl() {
+        if (process.platform !== 'linux') return false;
+        const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+        return fs.existsSync(`/lib/ld-musl-${arch}.so.1`);
     }
 
     _getLibName() {
@@ -45,6 +67,7 @@ class UaParser {
         let ext = 'so';
         let platform = 'linux';
         let prefix = 'lib';
+        let variant = '';
 
         if (isWindows) {
             ext = 'dll';
@@ -54,8 +77,10 @@ class UaParser {
             ext = 'dylib';
             platform = 'darwin';
             prefix = 'lib';
+        } else if (this._isMusl()) {
+            variant = '-musl';
         }
-        return `${prefix}ua-parser-${platform}-${arch}.${ext}`;
+        return `${prefix}ua-parser-${platform}-${arch}${variant}.${ext}`;
     }
 
     _initNode(config) {
@@ -89,6 +114,51 @@ class UaParser {
             this.freeFunc(errPtr);
             throw new Error(`Failed to initialize parser: ${errStr}`);
         }
+    }
+
+    async _initWasmNode(config, wasmFile) {
+        const { WASI } = require('wasi');
+        const wasi = new WASI({ version: 'preview1' });
+
+        const wasmBytes = fs.readFileSync(wasmFile);
+        const wasmModule = await WebAssembly.compile(wasmBytes);
+        const instance = await WebAssembly.instantiate(wasmModule, wasi.getImportObject());
+        wasi.initialize(instance);
+
+        this._wasmExports = instance.exports;
+        this._wasmMemory = instance.exports.memory;
+
+        const configJson = JSON.stringify(config);
+        const configBytes = Buffer.from(configJson, 'utf-8');
+        const ptr = this._wasmExports.malloc(configBytes.length);
+        new Uint8Array(this._wasmMemory.buffer, ptr, configBytes.length).set(configBytes);
+        const result = this._wasmExports.initUA(ptr, configBytes.length);
+        this._wasmExports.free(ptr);
+
+        if (result !== 0) {
+            throw new Error('Failed to initialize WASM parser');
+        }
+    }
+
+    _parseWasmNode(payload) {
+        const payloadBytes = Buffer.from(payload, 'utf-8');
+        const ptr = this._wasmExports.malloc(payloadBytes.length);
+        new Uint8Array(this._wasmMemory.buffer, ptr, payloadBytes.length).set(payloadBytes);
+
+        const packed = this._wasmExports.parseUA(ptr, payloadBytes.length);
+        this._wasmExports.free(ptr);
+
+        // parseUA returns (length << 32) | ptr as i64 (BigInt in JS)
+        const resLength = Number(packed >> 32n);
+        const resPtr = Number(packed & 0xFFFFFFFFn);
+
+        if (resPtr === 0) return null;
+
+        const resBytes = new Uint8Array(this._wasmMemory.buffer, resPtr, resLength);
+        const resStr = Buffer.from(resBytes).toString('utf-8');
+        this._wasmExports.free(resPtr);
+
+        return JSON.parse(resStr);
     }
 
     async _initWasm(config) {
@@ -147,10 +217,16 @@ class UaParser {
 
         const payload = JSON.stringify({ ua, headers });
 
-        if (isBrowser) {
+        if (this.isWasm && isBrowser) {
             const resStr = globalThis.parseUA(payload);
             const result = JSON.parse(resStr);
             if (result.error) {
+                throw new Error(result.error);
+            }
+            return result;
+        } else if (this.isWasm) {
+            const result = this._parseWasmNode(payload);
+            if (result && result.error) {
                 throw new Error(result.error);
             }
             return result;
