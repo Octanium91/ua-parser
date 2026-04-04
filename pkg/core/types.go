@@ -1,10 +1,13 @@
 package core
 
+import "context"
+
 type Config struct {
-	DisableAutoUpdate bool   `json:"disable_auto_update"`
-	UpdateURL         string `json:"update_url"`
-	UpdateInterval    string `json:"update_interval"` // e.g., "24h"
-	LRUCacheSize      int    `json:"lru_cache_size"`
+	Ctx               context.Context `json:"-"`
+	DisableAutoUpdate bool            `json:"disable_auto_update"`
+	UpdateURL         string          `json:"update_url"`
+	UpdateInterval    string          `json:"update_interval"` // e.g., "24h"
+	LRUCacheSize      int             `json:"lru_cache_size"`
 }
 
 type Result struct {

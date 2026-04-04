@@ -21,10 +21,10 @@ public class UaParser {
     public UaParser() {
         this.gson = new Gson();
         try {
-            // Пытаемся запустить на максимальной скорости
+            // Try to run at maximum speed (native)
             this.backend = new JnaBackend();
         } catch (UnsatisfiedLinkError e) {
-            // Натив не завелся — musl-сборка не подошла или другая ошибка
+            // Native library failed to load -- musl build didn't work or other error
             System.err.println("WARN: Native UA-Parser library failed to load.");
             System.err.println("REASON: " + e.getMessage());
 

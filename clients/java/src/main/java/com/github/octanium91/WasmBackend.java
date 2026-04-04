@@ -52,15 +52,15 @@ public class WasmBackend implements ParserBackend {
             this.initUA = instance.export("initUA");
             this.parseUA = instance.export("parseUA");
 
-            // Инициализация рантайма Go
+            // Initialize Go runtime
             ExportFunction initialize = instance.export("_initialize");
             if (initialize != null) {
                 initialize.apply();
             }
 
-            // Инициализация парсера
+            // Initialize parser
             if (initUA != null) {
-                // Передаем примитивы 0L вместо объектов Value
+                // Pass primitive 0L instead of Value objects
                 initUA.apply(0L, 0L);
             }
         } catch (Exception e) {
@@ -69,7 +69,7 @@ public class WasmBackend implements ParserBackend {
     }
 
     @Override
-    public void init(String configJson) {
+    public synchronized void init(String configJson) {
         if (initUA == null || malloc == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
 
@@ -84,7 +84,7 @@ public class WasmBackend implements ParserBackend {
     }
 
     @Override
-    public String parse(String payloadJson) {
+    public synchronized String parse(String payloadJson) {
         if (parseUA == null || malloc == null) return null;
         byte[] inputBytes = payloadJson.getBytes(StandardCharsets.UTF_8);
         int len = inputBytes.length;

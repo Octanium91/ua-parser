@@ -41,15 +41,18 @@ class UaParser:
                 raise FileNotFoundError(f"Shared library not found at {lib_path}. Please provide lib_path or ensure the library is in the package directory.")
 
         self.lib = ctypes.CDLL(lib_path)
-        
+
         # Define argument and return types
+        # Use c_void_p for return types to preserve the original C pointer.
+        # Using c_char_p would auto-convert to Python bytes and lose the pointer,
+        # causing a memory leak since FreeString would never free the real allocation.
         self.lib.Init.argtypes = [ctypes.c_char_p]
-        self.lib.Init.restype = ctypes.c_char_p
-        
+        self.lib.Init.restype = ctypes.c_void_p
+
         self.lib.Parse.argtypes = [ctypes.c_char_p]
-        self.lib.Parse.restype = ctypes.c_char_p
-        
-        self.lib.FreeString.argtypes = [ctypes.c_char_p]
+        self.lib.Parse.restype = ctypes.c_void_p
+
+        self.lib.FreeString.argtypes = [ctypes.c_void_p]
         self.lib.FreeString.restype = None
 
     def init(self, config=None):
@@ -76,7 +79,7 @@ class UaParser:
         payload_json = json.dumps(payload).encode('utf-8')
         res_ptr = self.lib.Parse(payload_json)
         if res_ptr:
-            res_str = ctypes.string_at(res_ptr).decode('utf-8')
+            res_bytes = ctypes.string_at(res_ptr)
             self.lib.FreeString(res_ptr)
-            return json.loads(res_str)
+            return json.loads(res_bytes.decode('utf-8'))
         return None

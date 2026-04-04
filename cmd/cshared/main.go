@@ -13,38 +13,39 @@ import (
 )
 
 var (
-	parser *core.Parser
-	once   sync.Once
+	parser      *core.Parser
+	initMu      sync.Mutex
+	initialized bool
 )
 
 //export Init
 func Init(configJSON *C.char) *C.char {
-	var errStr string
-	once.Do(func() {
-		var cfg core.Config
-		if configJSON != nil {
-			err := json.Unmarshal([]byte(C.GoString(configJSON)), &cfg)
-			if err != nil {
-				errStr = "Failed to unmarshal config: " + err.Error()
-				return
-			}
-		}
+	initMu.Lock()
+	defer initMu.Unlock()
 
-		if cfg.LRUCacheSize == 0 {
-			cfg.LRUCacheSize = 1000
-		}
-
-		p, err := core.New(cfg)
-		if err != nil {
-			errStr = "Failed to initialize parser: " + err.Error()
-			return
-		}
-		parser = p
-	})
-
-	if errStr != "" {
-		return C.CString(errStr)
+	if initialized {
+		return nil
 	}
+
+	var cfg core.Config
+	if configJSON != nil {
+		err := json.Unmarshal([]byte(C.GoString(configJSON)), &cfg)
+		if err != nil {
+			return C.CString("Failed to unmarshal config: " + err.Error())
+		}
+	}
+
+	if cfg.LRUCacheSize == 0 {
+		cfg.LRUCacheSize = 1000
+	}
+
+	p, err := core.New(cfg)
+	if err != nil {
+		return C.CString("Failed to initialize parser: " + err.Error())
+	}
+
+	parser = p
+	initialized = true
 	return nil
 }
 

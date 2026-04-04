@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/Octanium91/ua-parser/pkg/core"
 )
@@ -36,7 +40,11 @@ func main() {
 		}
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	cfg := core.Config{
+		Ctx:               ctx,
 		DisableAutoUpdate: disableUpdate,
 		LRUCacheSize:      cacheSize,
 		UpdateURL:         os.Getenv("UA_UPDATE_URL"),
@@ -48,11 +56,24 @@ func main() {
 		log.Fatalf("Failed to initialize parser: %v", err)
 	}
 
-	http.HandleFunc(routePath, func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	mux.HandleFunc(routePath, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 
 		var req ParseRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -68,8 +89,24 @@ func main() {
 		}
 	})
 
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+		log.Println("Shutting down server...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Server shutdown error: %v", err)
+		}
+		parser.Close()
+	}()
+
 	log.Printf("Starting server on port %s, path %s (DisableUpdate: %v)", port, routePath, disableUpdate)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

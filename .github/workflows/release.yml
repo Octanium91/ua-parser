@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Run Tests
+    name: Run Tests & Benchmarks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,9 @@ jobs:
       - name: Generate JSON resources
         run: go run ./cmd/gen-json/main.go
       - name: Run Tests
-        run: go test -v ./...
+        run: go test -v -race ./...
+      - name: Run Benchmarks
+        run: go test -bench=. -benchmem ./pkg/core/
 
   build-server:
     name: Build Server Executables

@@ -14,15 +14,6 @@ import (
 )
 
 func (p *Parser) startUpdater() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered from updater panic: %v", r)
-			// Restart updater after some time if it crashed
-			time.Sleep(time.Minute)
-			go p.startUpdater()
-		}
-	}()
-
 	interval := 24 * time.Hour
 	if p.config.UpdateInterval != "" {
 		if d, err := time.ParseDuration(p.config.UpdateInterval); err == nil {
@@ -30,13 +21,52 @@ func (p *Parser) startUpdater() {
 		}
 	}
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	backoff := time.Duration(0)
+	maxBackoff := 30 * time.Minute
 
 	for {
+		if backoff > 0 {
+			select {
+			case <-p.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+		}
+
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Recovered from updater panic: %v", r)
+					if backoff == 0 {
+						backoff = time.Minute
+					} else {
+						backoff *= 2
+						if backoff > maxBackoff {
+							backoff = maxBackoff
+						}
+					}
+				}
+			}()
+
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-p.ctx.Done():
+					return
+				case <-ticker.C:
+					p.updateRegexes()
+					backoff = 0
+				}
+			}
+		}()
+
+		// Check if we should stop after panic recovery
 		select {
-		case <-ticker.C:
-			p.updateRegexes()
+		case <-p.ctx.Done():
+			return
+		default:
 		}
 	}
 }
@@ -92,7 +122,7 @@ func (p *Parser) updateRegexes() {
 	p.uap = newUap
 	p.mu.Unlock()
 
-	// Optionally clear cache when regexes change
+	// Clear cache when regexes change
 	if p.cache != nil {
 		p.cache.Purge()
 	}
