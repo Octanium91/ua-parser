@@ -45,12 +45,26 @@ public class JnaBackend implements ParserBackend {
         return null;
     }
 
+    static boolean isMusl() {
+        return new File("/lib/ld-musl-x86_64.so.1").exists() ||
+               new File("/lib/ld-musl-aarch64.so.1").exists();
+    }
+
     private static UaParserLib loadLibrary() {
         if (Platform.isLinux()) {
             String arch = Platform.is64Bit() && "x86-64".equals(Platform.ARCH) ? "linux-x86-64" :
                     (Platform.is64Bit() && "aarch64".equals(Platform.ARCH) ? "linux-aarch64" : null);
 
             if (arch != null) {
+                if (isMusl()) {
+                    // На musl-системах (Alpine) пробуем musl-сборку
+                    String muslPath = "/" + arch + "-musl/libua_parser.so";
+                    File muslLib = NativeLoader.extractLibrary(muslPath);
+                    if (muslLib != null) {
+                        return Native.load(muslLib.getAbsolutePath(), UaParserLib.class);
+                    }
+                }
+
                 // Загружаем стандартную библиотеку (glibc)
                 String resourcePath = "/" + arch + "/libua_parser.so";
                 File libFile = NativeLoader.extractLibrary(resourcePath);

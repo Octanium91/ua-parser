@@ -22,12 +22,8 @@ ARG TARGETARCH
 # Build the REST server
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o ua-server ./cmd/server/main.go
 
-# Build the C-shared library or WASM module
-RUN if [ "$TARGETOS" = "linux" ]; then \
-      GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm/main.go; \
-    else \
-      CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -o ua-parser.so ./cmd/cshared/main.go; \
-    fi
+# Build the native C-shared library (musl-compatible on Alpine)
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -buildmode=c-shared -ldflags="-s -w" -o ua-parser.so ./cmd/cshared/main.go
 
 # Stage 2: Final image
 FROM alpine:latest

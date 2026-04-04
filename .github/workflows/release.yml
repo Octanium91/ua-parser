@@ -77,6 +77,17 @@ jobs:
             goos: darwin
             goarch: "universal"
             output_lib: libua-parser-darwin.dylib
+          # Musl (Alpine) builds
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            variant: musl
+            output_lib: libua-parser-linux-amd64-musl.so
+          - os: ubuntu-24.04
+            goos: linux
+            goarch: arm64
+            variant: musl
+            output_lib: libua-parser-linux-arm64-musl.so
           # WebAssembly build
           - os: ubuntu-24.04
             goos: wasip1
@@ -89,6 +100,10 @@ jobs:
       - name: Set up QEMU
         if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
         uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: matrix.variant == 'musl' && matrix.goarch == 'arm64'
+        uses: docker/setup-buildx-action@v3
 
       - uses: actions/setup-go@v5
         with:
@@ -103,7 +118,23 @@ jobs:
           CGO_ENABLED: 1
         run: |
           GOROOT_HOST="$(go env GOROOT)"
-          if [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
+          if [ "${{ matrix.variant }}" == "musl" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
+            echo "Building Linux AMD64 (musl/Alpine) in Docker (golang:1.26-alpine)..."
+            docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
+              golang:1.26-alpine sh -c '
+                apk add --no-cache gcc musl-dev && \
+                go run ./cmd/gen-json/main.go && \
+                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go
+              '
+          elif [ "${{ matrix.variant }}" == "musl" ] && [ "${{ matrix.goarch }}" == "arm64" ]; then
+            echo "Building Linux ARM64 (musl/Alpine) in Docker (golang:1.26-alpine) via QEMU..."
+            docker run --rm --platform linux/arm64 -v "${{ github.workspace }}:/workspace" -w /workspace \
+              golang:1.26-alpine sh -c '
+                apk add --no-cache gcc musl-dev && \
+                go run ./cmd/gen-json/main.go && \
+                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go
+              '
+          elif [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
             echo "Building Linux AMD64 in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
               debian:bullseye bash -c '
@@ -138,7 +169,7 @@ jobs:
       - name: Upload Shared Library Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}
+          name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}${{ matrix.variant == 'musl' && '-musl' || '' }}
           path: |
             ${{ matrix.output_lib }}
             libua-parser-linux-*.so
@@ -263,6 +294,22 @@ jobs:
               mv clients/java/src/main/resources/libua-parser-linux-arm64.so clients/java/src/main/resources/linux-aarch64/libua_parser.so
           fi
 
+          # Linux x86-64 musl (Alpine)
+          mkdir -p clients/java/src/main/resources/linux-x86-64-musl
+          if [ -f clients/java/src/main/resources/libua-parser-linux-amd64-musl.so ]; then
+              echo "Found Linux x86-64 musl lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-amd64-musl.so clients/java/src/main/resources/linux-x86-64-musl/libua_parser.so
+          else
+              echo "ERROR: Linux x86-64 musl lib not found!"
+          fi
+
+          # Linux aarch64 musl (Alpine)
+          mkdir -p clients/java/src/main/resources/linux-aarch64-musl
+          if [ -f clients/java/src/main/resources/libua-parser-linux-arm64-musl.so ]; then
+              echo "Found Linux ARM64 musl lib, moving..."
+              mv clients/java/src/main/resources/libua-parser-linux-arm64-musl.so clients/java/src/main/resources/linux-aarch64-musl/libua_parser.so
+          fi
+
           # macOS
           mkdir -p clients/java/src/main/resources/darwin-x86-64
           if [ -f clients/java/src/main/resources/libua-parser-darwin-amd64.dylib ]; then
@@ -295,6 +342,10 @@ jobs:
           # macOS
           [ ! -f clients/java/src/main/resources/darwin-x86-64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-x86-64/libua-parser.dylib")
           [ ! -f clients/java/src/main/resources/darwin-aarch64/libua-parser.dylib ] && MISSING_LIBS+=("darwin-aarch64/libua-parser.dylib")
+
+          # Linux musl (Alpine)
+          [ ! -f clients/java/src/main/resources/linux-x86-64-musl/libua_parser.so ] && MISSING_LIBS+=("linux-x86-64-musl/libua_parser.so")
+          [ ! -f clients/java/src/main/resources/linux-aarch64-musl/libua_parser.so ] && MISSING_LIBS+=("linux-aarch64-musl/libua_parser.so")
 
           # WASM (Critical for this release)
           [ ! -f clients/java/src/main/resources/ua-parser.wasm ] && MISSING_LIBS+=("ua-parser.wasm")
@@ -486,6 +537,8 @@ jobs:
             release-artifacts/libua-parser-linux-amd64.h
             release-artifacts/libua-parser-linux-arm64.so
             release-artifacts/libua-parser-linux-arm64.h
+            release-artifacts/libua-parser-linux-amd64-musl.so
+            release-artifacts/libua-parser-linux-arm64-musl.so
             release-artifacts/ua-parser-windows-amd64.dll
             release-artifacts/ua-parser-windows-amd64.h
             release-artifacts/libua-parser-darwin-amd64.dylib
@@ -502,7 +555,8 @@ jobs:
             ### Artifacts Description
             - **ua-server-linux-amd64 / arm64**: Standalone REST API server for Linux.
             - **ua-server-windows-amd64.exe**: Standalone REST API server for Windows.
-            - **libua-parser-linux-[arch].so / .h**: Shared library for Linux (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+            - **libua-parser-linux-[arch].so / .h**: Shared library for Linux glibc (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
+            - **libua-parser-linux-[arch]-musl.so**: Shared library for Linux musl/Alpine (amd64, arm64). **Native Alpine support without gcompat.**
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
             - **libua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
             - **ua-parser.wasm / wasm_exec.js**: WebAssembly module and loader for Browser support.

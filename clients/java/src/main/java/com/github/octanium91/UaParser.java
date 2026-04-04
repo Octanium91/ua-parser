@@ -24,12 +24,12 @@ public class UaParser {
             // Пытаемся запустить на максимальной скорости
             this.backend = new JnaBackend();
         } catch (UnsatisfiedLinkError e) {
-            // Натив не завелся (мы в Alpine без gcompat или другая ошибка)
+            // Натив не завелся — musl-сборка не подошла или другая ошибка
             System.err.println("WARN: Native UA-Parser library failed to load.");
             System.err.println("REASON: " + e.getMessage());
 
             if (new File("/etc/alpine-release").exists()) {
-                System.err.println("WARN: Detected Alpine Linux environment. For maximum native performance, please install the compatibility layer by adding 'RUN apk add --no-cache gcompat' to your Dockerfile!");
+                System.err.println("WARN: Detected Alpine Linux. Ensure you are using the latest ua-parser version with native musl support.");
             }
 
             System.err.println("WARN: Falling back to WebAssembly (WASM) mode for compatibility.");
