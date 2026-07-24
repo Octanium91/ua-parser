@@ -4,23 +4,36 @@ This is the Node.js wrapper for the high-performance Universal User-Agent Parser
 
 ## Installation
 
-The package is hosted on **GitHub Packages**. You need to configure your environment to use this registry.
+The package is hosted on **GitHub Packages**. GitHub Packages requires authentication for **every** install — including public packages — so you need a GitHub Personal Access Token even though this repository is public. (See [Alternative: install without a token](#alternative-install-without-a-token) below if you cannot use one.)
 
-### 1. Configure Registry
+### 1. Create a token
 
-Create or update a `.npmrc` file in your project root:
+Create a GitHub **Personal Access Token (classic)** with the `read:packages` scope: <https://github.com/settings/tokens>. Export it, e.g. `export GITHUB_TOKEN=ghp_xxx`.
+
+### 2. Configure the registry and auth
+
+Create or update a `.npmrc` file in your project root with **both** lines:
 
 ```text
 @octanium91:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
-### 2. Install Package
+### 3. Install the package
 
 ```bash
 npm install @octanium91/ua-parser
 ```
 
-> **Note**: The package automatically includes the required native binaries for Windows, Linux, and macOS (amd64 and arm64).
+> **Note**: The package automatically includes the required native binaries for Windows, Linux, and macOS (amd64 and arm64), plus WebAssembly builds for the Alpine/musl fallback and the browser.
+
+### Alternative: install without a token
+
+If you do not want to configure a GitHub token, download the tarball asset attached to the [latest release](https://github.com/Octanium91/ua-parser/releases/latest) (no auth required) and install it directly:
+
+```bash
+npm install ./octanium91-ua-parser-<version>.tgz
+```
 
 ## Usage (Node.js)
 
@@ -291,18 +304,35 @@ async function init() {
 
 ### Manual Setup (Vanilla JS / CDN)
 
-If you are not using a bundler or the automatic resolution fails:
+If you are not using a bundler, the `UaParser` class is not available as a plain global, so use the underlying WASM ABI directly. It exposes two global functions after the module starts: `initUA(configJson)` and `parseUA(payloadJson)`, both taking/returning JSON **strings**.
 
-1. Copy `ua-parser-js.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
-2. Include `wasm_exec.js` (Go's official js/wasm loader) in your HTML:
+1. Get the two assets. No npm token is needed — download them straight from the release:
+   - `https://github.com/Octanium91/ua-parser/releases/latest/download/ua-parser-js.wasm`
+   - `https://github.com/Octanium91/ua-parser/releases/latest/download/wasm_exec.js`
+
+   (or copy them from `node_modules/@octanium91/ua-parser/lib/` if you installed via npm). Place them in your public assets directory.
+
+2. Load `wasm_exec.js` (Go's official js/wasm loader) and instantiate the module:
+
    ```html
    <script src="/wasm_exec.js"></script>
+   <script>
+     (async () => {
+       const go = new Go();
+       const result = await WebAssembly.instantiateStreaming(fetch('/ua-parser-js.wasm'), go.importObject);
+       go.run(result.instance); // registers globalThis.initUA / globalThis.parseUA
+
+       // Config is optional; disable_auto_update defaults to true in WASM mode.
+       initUA(JSON.stringify({ disable_auto_update: true, lru_cache_size: 1000 }));
+
+       const payload = JSON.stringify({ ua: navigator.userAgent, headers: {} });
+       const info = JSON.parse(parseUA(payload));
+       console.log(info.browser.name, info.os.name); // e.g. "Chrome" "Windows"
+     })();
+   </script>
    ```
-3. Initialize the parser providing the URL to the WASM file:
-   ```javascript
-   const parser = new UaParser('/ua-parser-js.wasm');
-   await parser.init();
-   ```
+
+   `parseUA` accepts a JSON payload `{ "ua": "<string>", "headers": { "Sec-CH-UA-Platform": "\"Windows\"", ... } }` and returns the same [result object](#result-object-structure) as a JSON string. `initUA` returns `null` on success or an error string.
 
 > **Note**: The browser uses the `ua-parser-js.wasm` build (js/wasm ABI, loaded via `wasm_exec.js`). The `ua-parser.wasm` file also shipped in `lib/` is a WASI (wasip1) build used only by the Node.js fallback on Alpine/musl — do not use it in the browser.
 

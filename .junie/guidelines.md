@@ -35,7 +35,7 @@
   - Docker images are published to **GitHub Container Registry (ghcr.io)**.
   - Shared libraries and Python wheels are distributed via **GitHub Releases**.
 - **Version Management**: Manual changes to package versions (e.g., in `package.json`, `pom.xml`, `setup.py`) are strictly prohibited. Versions are automatically managed and synchronized by the CI/CD pipeline during the release process based on the Git tag.
-- **Installation Guides**: All installation documentation must explicitly state that for Node.js and Java, the user must configure their local package manager (npm, Maven) to use the GitHub Packages registry. Since the repository is public, authentication is generally not required for downloading packages, but registry configuration is still necessary.
+- **Installation Guides**: All installation documentation must explicitly state that for Node.js and Java, the user must configure their local package manager (npm, Maven) to use the GitHub Packages registry. **GitHub Packages requires authentication for every install, including public packages** — so the docs must document the required Personal Access Token (`read:packages` scope) for the GitHub Packages path. Auth-free alternatives should be preferred where available and documented: **JitPack** for Java (no token), the **`.whl` from Releases** for Python, the attached **npm tarball from Releases** for Node.js, and the **`go get`** module path for Go.
 
 ## Performance & Logging
 - The application is designed for **high performance**; use LRU caching and avoid unnecessary allocations in the hot path.

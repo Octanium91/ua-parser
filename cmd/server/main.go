@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,16 +20,55 @@ type ParseRequest struct {
 	Headers map[string]string `json:"headers"`
 }
 
+// envOr returns the value of the environment variable key, or def if unset/empty.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// normalizePath ensures a route pattern is a valid absolute path (leading slash),
+// so a value like "status" is accepted the same as "/status".
+func normalizePath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	if p[0] != '/' {
+		return "/" + p
+	}
+	return p
+}
+
+// joinPath mounts sub under an optional base prefix. base "" (unset) leaves sub
+// at the root, preserving legacy behavior; base "/api" shifts everything, e.g.
+// joinPath("/api", "/health") -> "/api/health" and joinPath("/api", "/") -> "/api".
+// Every endpoint is derived through this, so future endpoints shift with the base.
+func joinPath(base, sub string) string {
+	base = strings.TrimRight(normalizePath(base), "/") // "" (root) or "/api"
+	full := base + normalizePath(sub)                  // "/", "/health", "/api/", "/api/health"
+	if full != "/" {
+		full = strings.TrimRight(full, "/") // "/api/" -> "/api"; leaves "/health" as-is
+	}
+	if full == "" {
+		full = "/"
+	}
+	return full
+}
+
 func main() {
 	port := os.Getenv("UA_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	routePath := os.Getenv("UA_ROUTE_PATH")
-	if routePath == "" {
-		routePath = "/"
-	}
+	// UA_BASE_PATH is a single prefix under which every endpoint is mounted
+	// (handy behind a reverse proxy). UA_ROUTE_PATH / UA_HEALTH_PATH set each
+	// endpoint's sub-path relative to that base; unset UA_BASE_PATH keeps the
+	// legacy root behavior.
+	basePath := envOr("UA_BASE_PATH", "")
+	routePath := joinPath(basePath, envOr("UA_ROUTE_PATH", "/"))
+	healthPath := joinPath(basePath, envOr("UA_HEALTH_PATH", "/health"))
 
 	disableUpdateStr := os.Getenv("UA_DISABLE_UPDATE")
 	disableUpdate, _ := strconv.ParseBool(disableUpdateStr)
@@ -56,18 +96,16 @@ func main() {
 		log.Fatalf("Failed to initialize parser: %v", err)
 	}
 
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	healthHandler := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
-	})
+	}
 
-	mux.HandleFunc(routePath, func(w http.ResponseWriter, r *http.Request) {
+	parseHandler := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -87,7 +125,28 @@ func main() {
 		if err := json.NewEncoder(w).Encode(result); err != nil {
 			log.Printf("Error encoding response: %v", err)
 		}
-	})
+	}
+
+	mux := http.NewServeMux()
+	if healthPath == routePath {
+		// Both endpoints were configured onto the same path. Register a single
+		// handler that dispatches by method so ServeMux never panics on a
+		// duplicate-pattern registration.
+		mux.HandleFunc(routePath, func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				healthHandler(w, r)
+			case http.MethodPost:
+				parseHandler(w, r)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+		log.Printf("Health and parse endpoints share path %q (GET=health, POST=parse)", routePath)
+	} else {
+		mux.HandleFunc(healthPath, healthHandler)
+		mux.HandleFunc(routePath, parseHandler)
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + port,
@@ -110,7 +169,7 @@ func main() {
 		parser.Close()
 	}()
 
-	log.Printf("Starting server on port %s, path %s (DisableUpdate: %v)", port, routePath, disableUpdate)
+	log.Printf("Starting server on port %s (parse=%s, health=%s, DisableUpdate: %v)", port, routePath, healthPath, disableUpdate)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}

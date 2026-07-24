@@ -1,11 +1,8 @@
 package core
 
-//go:generate go run ../../cmd/gen-json/main.go
-
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,9 +10,13 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ua-parser/uap-go/uaparser"
+	"gopkg.in/yaml.v3"
 )
 
-//go:embed resources/regexes.json
+// The upstream regex database is embedded directly as YAML so the module is
+// self-contained on the Go proxy (no build-time generation step required).
+//
+//go:embed resources/regexes.yaml
 var defaultRegexes []byte
 
 var aiBots = []string{
@@ -34,7 +35,7 @@ type Parser struct {
 
 func New(cfg Config) (*Parser, error) {
 	def := uaparser.RegexDefinitions{}
-	if err := json.Unmarshal(defaultRegexes, &def); err != nil {
+	if err := yaml.Unmarshal(defaultRegexes, &def); err != nil {
 		return nil, err
 	}
 

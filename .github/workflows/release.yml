@@ -14,8 +14,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      - name: Generate JSON resources
-        run: go run ./cmd/gen-json/main.go
       - name: Run Tests
         run: go test -v -race ./...
       - name: Run Benchmarks
@@ -30,10 +28,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      
-      - name: Generate JSON resources
-        run: go run ./cmd/gen-json/main.go
-      
+
       - name: Build Linux Server
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ua-server-linux-amd64 ./cmd/server/main.go
@@ -104,10 +99,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      
-      - name: Generate JSON resources
-        run: go run ./cmd/gen-json/main.go
-      
+
       - name: Build Shared Library
         shell: bash
         env:
@@ -119,7 +111,6 @@ jobs:
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
               golang:1.26-alpine sh -c '
                 apk add --no-cache gcc musl-dev && \
-                go run ./cmd/gen-json/main.go && \
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goos }}" == "linux" ]; then
@@ -128,7 +119,6 @@ jobs:
               debian:bullseye bash -c '
                 apt-get update && apt-get install -y gcc ca-certificates && \
                 export PATH="/usr/local/go/bin:$PATH" && \
-                go run ./cmd/gen-json/main.go && \
                 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
@@ -467,6 +457,21 @@ jobs:
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GitHub Packages npm requires a token even for public installs. Attach a
+      # plain tarball to the Release so users can install without any token.
+      - name: Pack npm tarball
+        run: |
+          cd clients/node
+          npm pack
+          ls -1 *.tgz
+
+      - name: Attach npm tarball to Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: clients/node/*.tgz
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   publish-python:
     name: Build Python Wheel

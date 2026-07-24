@@ -6,7 +6,9 @@ This is the Java wrapper for the high-performance Universal User-Agent Parser. I
 
 ### JitPack
 
-Alternatively, you can use **JitPack** to include the library directly from GitHub.
+**JitPack** is the recommended way to include the library directly from GitHub — it requires **no authentication**.
+
+> **Replace `TAG` with the exact release tag, including the leading `v`** — e.g. `v0.0.48` (not `0.0.48`). Using a version without the `v` will fail to resolve on JitPack. See the [Releases page](https://github.com/Octanium91/ua-parser/releases) for the current tag.
 
 #### Maven (`pom.xml`)
 

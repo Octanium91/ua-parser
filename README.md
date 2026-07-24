@@ -40,13 +40,14 @@ We provide official wrappers for major languages that use the core shared librar
 
 ### Package Registry Setup
 
-For Node.js and Java, you must configure your package manager to find the packages. 
+Each client has an **auth-free** installation path; the GitHub Packages registry (npm/Maven) additionally requires a Personal Access Token, since GitHub Packages authenticates every install even for public packages.
 
-| Platform    | Setup Requirement | Link |
-|-------------|-------------------|------|
-| **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
-| **Java**    | Configure GitHub repository | [Java Setup](./clients/java#installation) |
-| **Python**  | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
+| Platform    | Auth-free path | Also on (needs token) | Link |
+|-------------|----------------|-----------------------|------|
+| **Go**      | `go get github.com/Octanium91/ua-parser` | — | [Go Setup](./clients/go) |
+| **Node.js** | npm tarball attached to Releases | GitHub Packages (npm, `read:packages` token) | [Node.js Setup](./clients/node#installation) |
+| **Java**    | JitPack (`v`-prefixed tag) | GitHub Packages (Maven, token) | [Java Setup](./clients/java#installation) |
+| **Python**  | `.whl` from Releases | — | [Python Setup](./clients/python#installation) |
 
 ### Hybrid Execution (Java)
 
@@ -131,13 +132,9 @@ Critical-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model
 
 ### Running Locally
 
-To run the server locally without Docker:
+To run the server locally without Docker (the regex database is embedded, no generation step needed):
 
 ```bash
-# Generate required JSON resources
-go generate ./pkg/core/...
-
-# Start the server
 go run ./cmd/server/main.go
 ```
 
@@ -161,13 +158,47 @@ docker run -p 8080:8080 ua-parser
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `UA_PORT` | Server port | `8080` |
-| `UA_ROUTE_PATH` | API route path | `/` |
+| `UA_BASE_PATH` | Base prefix all endpoints are mounted under (e.g. `/api`) | *(root)* |
+| `UA_ROUTE_PATH` | Parse endpoint sub-path (POST), relative to the base | `/` |
+| `UA_HEALTH_PATH` | Health-check sub-path (GET), relative to the base | `/health` |
 | `UA_DISABLE_UPDATE` | Disable auto-updates | `false` |
 | `UA_CACHE_SIZE` | LRU cache size | `1000` |
 | `UA_UPDATE_URL` | Remote URL for `regexes.yaml` | `https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml` |
 | `UA_UPDATE_INTERVAL` | Background update check interval | `24h` |
 
+### Health Check
+
+The server exposes a `GET` health-check endpoint for liveness/readiness probes, at `/health` by default:
+
+```bash
+curl http://localhost:8080/health   # -> {"status":"ok"}
+```
+
+### Relocating the endpoints
+
+The whole API can be mounted under a single **base prefix** — handy behind a reverse proxy — and any future endpoints inherit it automatically:
+
+```bash
+# Everything under /api  ->  parse at POST /api, health at GET /api/health
+docker run -p 8080:8080 \
+  -e UA_BASE_PATH=/api \
+  ghcr.io/octanium91/ua-parser:latest
+```
+
+For finer control, `UA_ROUTE_PATH` and `UA_HEALTH_PATH` set each endpoint's sub-path relative to the base (defaults `/` and `/health`):
+
+```bash
+# parse at POST /svc/parse, health at GET /svc/healthz
+docker run -p 8080:8080 \
+  -e UA_BASE_PATH=/svc -e UA_ROUTE_PATH=/parse -e UA_HEALTH_PATH=/healthz \
+  ghcr.io/octanium91/ua-parser:latest
+```
+
+Notes: a leading slash is optional (`api` == `/api`); leaving `UA_BASE_PATH` unset keeps the legacy root behavior (`/` and `/health`); and if two endpoints resolve to the **same** path the server still starts, dispatching by method on that path (`GET` = health, `POST` = parse).
+
 ### Example Request
+
+The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints:
 
 ```bash
 curl -X POST http://localhost:8080/ \
@@ -248,5 +279,4 @@ These files are the **required drivers** for integrations. Note that Python, Nod
 - `/cmd/cshared` — Wrapper for compiling into a native shared library (C-FFI).
 - `/cmd/wasm` — WebAssembly WASI reactor build (`ua-parser.wasm`, fallback engine for Java/Node.js).
 - `/cmd/wasmjs` — WebAssembly js/wasm build for browsers (`ua-parser-js.wasm`).
-- `/cmd/gen-json` — Converts `regexes.yaml` to embedded JSON (run before building).
 - `/clients` — Official Go, Python, Node.js, and Java wrappers.
