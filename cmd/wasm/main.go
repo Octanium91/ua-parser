@@ -1,5 +1,18 @@
 //go:build wasm && wasip1
 
+// This is the WASI (wasip1) reactor build of the UA parser.
+//
+// Memory contract with the host:
+//   - malloc/free manage buffers that cross the WASM boundary. Allocated
+//     buffers are pinned in the registry map: Go's GC is non-moving, so a
+//     buffer that is kept reachable via the registry neither gets collected
+//     nor changes address while the host holds its pointer. free removes the
+//     registry entry, allowing the GC to reclaim the buffer.
+//   - parseUA returns a packed uint64: (length << 32) | ptr. The host reads
+//     length bytes at ptr and must release the buffer with free(ptr).
+//   - The registry map is deliberately unsynchronized: hosts guarantee
+//     single-threaded access to the module's exports (standard for WASI
+//     preview 1 reactors).
 package main
 
 import (
@@ -37,7 +50,7 @@ func initUA(ptr uint32, length uint32) int32 {
 		DisableAutoUpdate: true, // WASM environment usually doesn't have network access
 	}
 
-	if length > 0 {
+	if ptr != 0 && length > 0 {
 		configBytes := (*[1 << 30]byte)(unsafe.Pointer(uintptr(ptr)))[:length:length]
 		if err := json.Unmarshal(configBytes, &cfg); err != nil {
 			// If invalid JSON, we'll just use the default config instead of failing hard
@@ -54,6 +67,12 @@ func initUA(ptr uint32, length uint32) int32 {
 
 //go:wasmexport parseUA
 func parseUA(ptr uint32, length uint32) uint64 {
+	// Guard against a null pointer or empty input before constructing the
+	// unsafe slice below; a zero-length slice at address 0 is undefined.
+	if ptr == 0 || length == 0 {
+		return 0
+	}
+
 	if parser == nil {
 		if initUA(0, 0) != 0 {
 			return 0

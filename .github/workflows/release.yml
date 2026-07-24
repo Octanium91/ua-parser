@@ -67,7 +67,9 @@ jobs:
             goos: linux
             goarch: amd64
             output_lib: libua-parser-linux-amd64.so
-          - os: ubuntu-24.04
+          # Native arm64 runner: QEMU-emulated Go builds are known-flaky
+          # (golang/go#68976, docker/build-push-action#1309)
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             output_lib: libua-parser-linux-arm64.so
@@ -78,14 +80,14 @@ jobs:
           - os: macos-14
             goos: darwin
             goarch: "universal"
-            output_lib: libua-parser-darwin.dylib
+            output_lib: libua-parser-darwin-arm64.dylib
           # Musl (Alpine) builds
           - os: ubuntu-24.04
             goos: linux
             goarch: amd64
             variant: musl
             output_lib: libua-parser-linux-amd64-musl.so
-          - os: ubuntu-24.04
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             variant: musl
@@ -98,14 +100,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up QEMU
-        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        if: matrix.variant == 'musl' && matrix.goarch == 'arm64'
-        uses: docker/setup-buildx-action@v3
 
       - uses: actions/setup-go@v5
         with:
@@ -120,46 +114,32 @@ jobs:
           CGO_ENABLED: 1
         run: |
           GOROOT_HOST="$(go env GOROOT)"
-          if [ "${{ matrix.variant }}" == "musl" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
-            echo "Building Linux AMD64 (musl/Alpine) in Docker (golang:1.26-alpine)..."
+          if [ "${{ matrix.variant }}" == "musl" ]; then
+            echo "Building Linux ${{ matrix.goarch }} (musl/Alpine) in Docker (golang:1.26-alpine) on a native runner..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
               golang:1.26-alpine sh -c '
                 apk add --no-cache gcc musl-dev && \
                 go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64-musl.so ./cmd/cshared/main.go
+                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
               '
-          elif [ "${{ matrix.variant }}" == "musl" ] && [ "${{ matrix.goarch }}" == "arm64" ]; then
-            echo "Building Linux ARM64 (musl/Alpine) in Docker (golang:1.26-alpine) via QEMU..."
-            docker run --rm --platform linux/arm64 -v "${{ github.workspace }}:/workspace" -w /workspace \
-              golang:1.26-alpine sh -c '
-                apk add --no-cache gcc musl-dev && \
-                go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64-musl.so ./cmd/cshared/main.go
-              '
-          elif [ "${{ matrix.goos }}" == "linux" ] && [ "${{ matrix.goarch }}" == "amd64" ]; then
-            echo "Building Linux AMD64 in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
+          elif [ "${{ matrix.goos }}" == "linux" ]; then
+            echo "Building Linux ${{ matrix.goarch }} in Docker (debian:bullseye, glibc 2.31) for broad compatibility, on a native runner..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
               debian:bullseye bash -c '
                 apt-get update && apt-get install -y gcc ca-certificates && \
                 export PATH="/usr/local/go/bin:$PATH" && \
                 go run ./cmd/gen-json/main.go && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-amd64.so ./cmd/cshared/main.go
-              '
-          elif [ "${{ matrix.goarch }}" == "arm64" ] && [ "${{ matrix.goos }}" == "linux" ]; then
-            echo "Building Linux ARM64 via cross-compilation in Docker (debian:bullseye, glibc 2.31) for broad compatibility..."
-            docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
-              debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc-aarch64-linux-gnu ca-certificates && \
-                export PATH="/usr/local/go/bin:$PATH" && \
-                CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-linux-arm64.so ./cmd/cshared/main.go
+                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared/main.go
               '
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
-            echo "Building macOS Universal..."
+            echo "Building macOS dylibs (arm64 + amd64)..."
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared/main.go
             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-amd64.dylib ./cmd/cshared/main.go
           elif [ "${{ matrix.goos }}" == "wasip1" ]; then
-            echo "Building WebAssembly (WASI)..."
+            echo "Building WebAssembly: WASI reactor (Node/Java fallback) + js/wasm (browser)..."
             GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm/main.go
+            GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o ua-parser-js.wasm ./cmd/wasmjs/main.go
+            cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm_exec.js 2>/dev/null || cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" wasm_exec.js
           else
             LDFLAGS="-s -w"
             if [ "${{ matrix.goos }}" == "windows" ]; then
@@ -176,6 +156,9 @@ jobs:
             ${{ matrix.output_lib }}
             libua-parser-linux-*.so
             libua-parser-darwin-*.dylib
+            ua-parser.wasm
+            ua-parser-js.wasm
+            wasm_exec.js
             *.h
           if-no-files-found: warn
 
@@ -216,7 +199,7 @@ jobs:
           tags: |
             type=ref,event=tag
             type=sha
-            type=raw,value=latest,enable=${{ github.ref == format('refs/tags/{0}', github.event.repository.default_branch) }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and Push
         uses: docker/build-push-action@v5
@@ -250,13 +233,14 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
           server-id: github
-          server-username: ${{ steps.info.outputs.owner }}
-          # The line below worked as a literal string, do not change to secrets.GITHUB_TOKEN
+          server-username: GITHUB_ACTOR
+          # The line below is an env-var NAME resolved by settings.xml, do not change to secrets.GITHUB_TOKEN
           server-password: GITHUB_TOKEN
 
       - name: Download Shared Libs
         uses: actions/download-artifact@v4
         with:
+          pattern: shared-lib-*
           path: clients/java/src/main/resources
           merge-multiple: true
 
@@ -268,9 +252,12 @@ jobs:
 
           # Remove headers and other non-library files from JAR resources
           rm -f clients/java/src/main/resources/*.h
-          
+
           # Remove server executables (they don't belong in the client lib)
           rm -f clients/java/src/main/resources/ua-server*
+
+          # Browser artifacts are not used by the Java client (it uses the WASI reactor ua-parser.wasm)
+          rm -f clients/java/src/main/resources/ua-parser-js.wasm clients/java/src/main/resources/wasm_exec.js
           
           # Organize into JNA structure
           # Windows
@@ -383,8 +370,16 @@ jobs:
           echo "Updated POM.xml:"
           cat $POM_FILE
 
-      - name: Build JAR file
-        run: mvn -B package -f clients/java/pom.xml -DskipTests
+      - name: Build JAR file (runs smoke tests on glibc)
+        run: mvn -B package -f clients/java/pom.xml
+
+      - name: Smoke test on Alpine (musl) container
+        run: |
+          mvn -B -q dependency:copy-dependencies -f clients/java/pom.xml
+          docker run --rm -v "${{ github.workspace }}/clients/java:/app" -w /app \
+            eclipse-temurin:17-jre-alpine \
+            java -cp 'target/classes:target/test-classes:target/dependency/*' \
+              org.junit.runner.JUnitCore com.github.octanium91.UaParserSmokeTest
 
       - name: Upload JAR to Release Immediately
         uses: softprops/action-gh-release@v1
@@ -427,6 +422,7 @@ jobs:
       - name: Download Shared Libs
         uses: actions/download-artifact@v4
         with:
+          pattern: shared-lib-*
           path: clients/node/lib/
           merge-multiple: true
 
@@ -434,6 +430,24 @@ jobs:
         run: |
           rm -f clients/node/lib/*.h
           rm -f clients/node/lib/ua-server*
+
+      - name: Verify Required Native Libraries
+        run: |
+          MISSING=()
+          [ ! -f clients/node/lib/libua-parser-linux-amd64.so ] && MISSING+=("libua-parser-linux-amd64.so")
+          [ ! -f clients/node/lib/libua-parser-linux-arm64.so ] && MISSING+=("libua-parser-linux-arm64.so")
+          [ ! -f clients/node/lib/libua-parser-linux-amd64-musl.so ] && MISSING+=("libua-parser-linux-amd64-musl.so")
+          [ ! -f clients/node/lib/libua-parser-linux-arm64-musl.so ] && MISSING+=("libua-parser-linux-arm64-musl.so")
+          [ ! -f clients/node/lib/ua-parser-windows-amd64.dll ] && MISSING+=("ua-parser-windows-amd64.dll")
+          [ ! -f clients/node/lib/libua-parser-darwin-amd64.dylib ] && MISSING+=("libua-parser-darwin-amd64.dylib")
+          [ ! -f clients/node/lib/libua-parser-darwin-arm64.dylib ] && MISSING+=("libua-parser-darwin-arm64.dylib")
+          [ ! -f clients/node/lib/ua-parser.wasm ] && MISSING+=("ua-parser.wasm")
+          [ ! -f clients/node/lib/ua-parser-js.wasm ] && MISSING+=("ua-parser-js.wasm")
+          [ ! -f clients/node/lib/wasm_exec.js ] && MISSING+=("wasm_exec.js")
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "CRITICAL ERROR: missing npm package libraries:"; printf '  - %s\n' "${MISSING[@]}"; exit 1
+          fi
+          echo "All npm package libraries verified."
 
       - name: Update Package Metadata
         run: |
@@ -477,6 +491,7 @@ jobs:
       - name: Download Shared Libs
         uses: actions/download-artifact@v4
         with:
+          pattern: shared-lib-*
           path: clients/python/uaparser/
           merge-multiple: true
 
@@ -485,8 +500,22 @@ jobs:
           rm -f clients/python/uaparser/*.h
           rm -f clients/python/uaparser/wasm_exec.js
           rm -f clients/python/uaparser/ua-parser.wasm
+          rm -f clients/python/uaparser/ua-parser-js.wasm
           rm -f clients/python/uaparser/ua-server*
-          
+
+          MISSING=()
+          [ ! -f clients/python/uaparser/libua-parser-linux-amd64.so ] && MISSING+=("libua-parser-linux-amd64.so")
+          [ ! -f clients/python/uaparser/libua-parser-linux-arm64.so ] && MISSING+=("libua-parser-linux-arm64.so")
+          [ ! -f clients/python/uaparser/libua-parser-linux-amd64-musl.so ] && MISSING+=("libua-parser-linux-amd64-musl.so")
+          [ ! -f clients/python/uaparser/libua-parser-linux-arm64-musl.so ] && MISSING+=("libua-parser-linux-arm64-musl.so")
+          [ ! -f clients/python/uaparser/ua-parser-windows-amd64.dll ] && MISSING+=("ua-parser-windows-amd64.dll")
+          [ ! -f clients/python/uaparser/libua-parser-darwin-amd64.dylib ] && MISSING+=("libua-parser-darwin-amd64.dylib")
+          [ ! -f clients/python/uaparser/libua-parser-darwin-arm64.dylib ] && MISSING+=("libua-parser-darwin-arm64.dylib")
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "CRITICAL ERROR: missing wheel libraries:"; printf '  - %s\n' "${MISSING[@]}"; exit 1
+          fi
+          echo "All wheel libraries verified."
+
           ls -R clients/python/uaparser/
 
       - name: Update Setup.py Version
@@ -509,7 +538,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-server, build-shared-libs, docker, publish-python, publish-java]
+    needs: [build-server, build-shared-libs, docker, publish-python, publish-java, publish-node]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -548,6 +577,7 @@ jobs:
             release-artifacts/libua-parser-darwin-arm64.dylib
             release-artifacts/libua-parser-darwin-arm64.h
             release-artifacts/ua-parser.wasm
+            release-artifacts/ua-parser-js.wasm
             release-artifacts/wasm_exec.js
             release-artifacts/*.whl
             release-artifacts/*.jar
@@ -558,10 +588,11 @@ jobs:
             - **ua-server-linux-amd64 / arm64**: Standalone REST API server for Linux.
             - **ua-server-windows-amd64.exe**: Standalone REST API server for Windows.
             - **libua-parser-linux-[arch].so / .h**: Shared library for Linux glibc (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
-            - **libua-parser-linux-[arch]-musl.so**: Shared library for Linux musl/Alpine (amd64, arm64). **Native Alpine support without gcompat.**
+            - **libua-parser-linux-[arch]-musl.so**: Shared library for Linux musl (amd64, arm64). Note: current Go toolchains cannot be dlopen'd on Alpine/musl (golang/go#54805) — on Alpine the Java and Node.js clients automatically use the WebAssembly backend instead; these musl builds ship for forward compatibility.
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
             - **libua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
-            - **ua-parser.wasm / wasm_exec.js**: WebAssembly module and loader for Browser support.
+            - **ua-parser.wasm**: WebAssembly (WASI reactor) module — the automatic fallback engine for the Java (Chicory) and Node.js (node:wasi) clients.
+            - **ua-parser-js.wasm / wasm_exec.js**: WebAssembly (js/wasm) module and Go loader for Browser usage.
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
             ### Package Managers (GitHub Packages)

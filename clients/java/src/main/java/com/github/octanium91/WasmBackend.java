@@ -1,5 +1,7 @@
 package com.github.octanium91;
 
+import com.dylibso.chicory.compiler.MachineFactoryCompiler;
+import com.dylibso.chicory.runtime.ByteArrayMemory;
 import com.dylibso.chicory.runtime.Instance;
 import com.dylibso.chicory.runtime.ImportValues;
 import com.dylibso.chicory.runtime.Memory;
@@ -14,7 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class WasmBackend implements ParserBackend {
-    private final WasmModule module;
+    // Parsing the 5+ MB module is expensive; do it once per JVM.
+    private static volatile WasmModule cachedModule;
+
     private final Instance instance;
     private final Memory memory;
     private final ExportFunction malloc;
@@ -25,13 +29,6 @@ public class WasmBackend implements ParserBackend {
 
     public WasmBackend() {
         try {
-            InputStream wasmInput = getClass().getResourceAsStream("/ua-parser.wasm");
-            if (wasmInput == null) {
-                throw new RuntimeException("ua-parser.wasm not found in resources");
-            }
-
-            this.module = Parser.parse(wasmInput);
-
             WasiOptions options = WasiOptions.builder()
                     .withStdout(System.out)
                     .withStderr(System.err)
@@ -42,8 +39,12 @@ public class WasmBackend implements ParserBackend {
                     .withFunctions(Arrays.asList(wasi.toHostFunctions()))
                     .build();
 
-            this.instance = Instance.builder(module)
+            this.instance = Instance.builder(loadModule())
                     .withImportValues(imports)
+                    // Translate WASM to JVM bytecode instead of interpreting:
+                    // cuts init and parse latency by orders of magnitude.
+                    .withMachineFactory(MachineFactoryCompiler::compile)
+                    .withMemoryFactory(ByteArrayMemory::new)
                     .build();
 
             this.memory = instance.memory();
@@ -52,32 +53,42 @@ public class WasmBackend implements ParserBackend {
             this.initUA = instance.export("initUA");
             this.parseUA = instance.export("parseUA");
 
-            // Initialize Go runtime
-            ExportFunction initialize = instance.export("_initialize");
-            if (initialize != null) {
-                initialize.apply();
-            }
-
-            // Initialize parser
-            if (initUA != null) {
-                // Pass primitive 0L instead of Value objects
-                initUA.apply(0L, 0L);
-            }
+            // Go wasip1 reactors require _initialize before any other export.
+            instance.export("_initialize").apply();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
         }
     }
 
+    private static WasmModule loadModule() {
+        WasmModule module = cachedModule;
+        if (module == null) {
+            synchronized (WasmBackend.class) {
+                module = cachedModule;
+                if (module == null) {
+                    InputStream wasmInput = WasmBackend.class.getResourceAsStream("/ua-parser.wasm");
+                    if (wasmInput == null) {
+                        throw new RuntimeException("ua-parser.wasm not found in resources");
+                    }
+                    module = Parser.parse(wasmInput);
+                    cachedModule = module;
+                }
+            }
+        }
+        return module;
+    }
+
     @Override
     public synchronized void init(String configJson) {
-        if (initUA == null || malloc == null) return;
         byte[] configBytes = configJson.getBytes(StandardCharsets.UTF_8);
 
-        // Результат apply - это long[], берем [0]
         long ptr = malloc.apply((long) configBytes.length)[0];
         try {
-            memory.write((int)ptr, configBytes);
-            initUA.apply(ptr, (long) configBytes.length);
+            memory.write((int) ptr, configBytes);
+            long rc = initUA.apply(ptr, (long) configBytes.length)[0];
+            if ((int) rc != 0) {
+                throw new RuntimeException("WASM parser initialization failed (rc=" + (int) rc + ")");
+            }
         } finally {
             free.apply(ptr);
         }
@@ -85,26 +96,26 @@ public class WasmBackend implements ParserBackend {
 
     @Override
     public synchronized String parse(String payloadJson) {
-        if (parseUA == null || malloc == null) return null;
         byte[] inputBytes = payloadJson.getBytes(StandardCharsets.UTF_8);
         int len = inputBytes.length;
 
         long ptr = malloc.apply((long) len)[0];
         try {
-            memory.write((int)ptr, inputBytes);
+            memory.write((int) ptr, inputBytes);
 
             long resultPacked = parseUA.apply(ptr, (long) len)[0];
 
-            int resLen = (int)(resultPacked >> 32);
-            int resPtr = (int)(resultPacked & 0xFFFFFFFFL);
+            int resLen = (int) (resultPacked >> 32);
+            int resPtr = (int) (resultPacked & 0xFFFFFFFFL);
 
             if (resPtr == 0) return null;
 
-            byte[] resBytes = memory.readBytes(resPtr, resLen);
-            String result = new String(resBytes, StandardCharsets.UTF_8);
-
-            free.apply((long) resPtr);
-            return result;
+            try {
+                byte[] resBytes = memory.readBytes(resPtr, resLen);
+                return new String(resBytes, StandardCharsets.UTF_8);
+            } finally {
+                free.apply((long) resPtr);
+            }
         } finally {
             free.apply(ptr);
         }

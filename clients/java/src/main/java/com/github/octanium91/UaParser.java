@@ -2,11 +2,6 @@ package com.github.octanium91;
 
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
-import com.sun.jna.Library;
-import com.sun.jna.Native;
-import com.sun.jna.Pointer;
-import com.sun.jna.Platform;
-import java.io.File;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -15,26 +10,43 @@ import java.util.Map;
  * Universal User-Agent Parser Java Wrapper with Native (JNA) and WASM fallback.
  */
 public class UaParser {
-    private ParserBackend backend;
+    private final ParserBackend backend;
     private final Gson gson;
 
     public UaParser() {
         this.gson = new Gson();
+        ParserBackend selected;
         try {
             // Try to run at maximum speed (native)
-            this.backend = new JnaBackend();
-        } catch (UnsatisfiedLinkError e) {
-            // Native library failed to load -- musl build didn't work or other error
+            selected = new JnaBackend();
+        } catch (LinkageError | RuntimeException nativeFailure) {
+            // LinkageError covers UnsatisfiedLinkError on first JNA touch and
+            // NoClassDefFoundError on any subsequent one.
             System.err.println("WARN: Native UA-Parser library failed to load.");
-            System.err.println("REASON: " + e.getMessage());
+            System.err.println("REASON: " + nativeFailure);
 
-            if (new File("/etc/alpine-release").exists()) {
-                System.err.println("WARN: Detected Alpine Linux. Ensure you are using the latest ua-parser version with native musl support.");
+            if (JnaBackend.isMusl()) {
+                System.err.println("NOTE: Alpine/musl cannot dlopen Go native libraries until"
+                        + " golang/go#54805 is fixed in the Go toolchain (expected Go 1.27+)."
+                        + " The WebAssembly backend is the supported mode on Alpine.");
             }
 
-            System.err.println("WARN: Falling back to WebAssembly (WASM) mode for compatibility.");
-            this.backend = new WasmBackend();
+            System.err.println("WARN: Falling back to WebAssembly (WASM) mode.");
+            try {
+                selected = new WasmBackend();
+            } catch (RuntimeException wasmFailure) {
+                wasmFailure.addSuppressed(nativeFailure);
+                throw wasmFailure;
+            }
         }
+        this.backend = selected;
+    }
+
+    /**
+     * @return the active backend implementation name ("JnaBackend" or "WasmBackend").
+     */
+    public String getBackendName() {
+        return backend.getClass().getSimpleName();
     }
 
     public UaParser(String libPath) {

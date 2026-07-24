@@ -57,29 +57,31 @@ public class JnaBackend implements ParserBackend {
 
             if (arch != null) {
                 if (isMusl()) {
-                    // On musl systems (Alpine), try musl build
-                    try {
-                        String muslPath = "/" + arch + "-musl/libua_parser.so";
-                        File muslLib = NativeLoader.extractLibrary(muslPath);
-                        if (muslLib != null) {
-                            return Native.load(muslLib.getAbsolutePath(), UaParserLib.class);
-                        }
-                    } catch (UnsatisfiedLinkError e) {
-                        // musl build didn't work, try glibc build (via gcompat)
+                    // musl's dynamic loader rejects dlopen of Go c-shared libraries
+                    // (initial-exec TLS, golang/go#54805) on every Go release up to and
+                    // including 1.26.x. We still attempt the musl build so deployments
+                    // pick up native mode automatically once a fixed Go toolchain ships,
+                    // but we never try the glibc build here: it cannot load on musl and
+                    // its error would mask the real reason.
+                    String muslPath = "/" + arch + "-musl/libua_parser.so";
+                    File muslLib = NativeLoader.extractLibrary(muslPath);
+                    if (muslLib == null) {
+                        throw new UnsatisfiedLinkError(
+                                "ua-parser: musl native library not found in JAR resources: " + muslPath);
                     }
+                    return Native.load(muslLib.getAbsolutePath(), UaParserLib.class);
                 }
 
-                // Load standard library (glibc / gcompat)
                 String resourcePath = "/" + arch + "/libua_parser.so";
                 File libFile = NativeLoader.extractLibrary(resourcePath);
-
                 if (libFile != null) {
                     return Native.load(libFile.getAbsolutePath(), UaParserLib.class);
                 }
             }
         }
 
-        // Standard JNA fallback for Windows, macOS, or if file was not extracted
+        // Windows and macOS resolve via JNA's classpath convention
+        // ({os-arch}/mapped-name inside the JAR); also the last resort elsewhere.
         return Native.load("ua-parser", UaParserLib.class);
     }
 }

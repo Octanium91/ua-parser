@@ -15,6 +15,18 @@ This package is distributed via GitHub Releases.
 
 > **Note**: The package automatically includes the required native binaries for Windows and Linux (amd64 and arm64).
 
+## Alpine Linux / musl
+
+The Python client does **not** currently work on Alpine Linux or other musl-based systems. Go shared libraries (`-buildmode=c-shared`) cannot be loaded by musl's dynamic linker due to a Go toolchain limitation ([golang/go#54805](https://github.com/golang/go/issues/54805)); loading fails with an error like `initial-exec TLS resolves to dynamic definition`. On musl systems the client detects this and raises a `RuntimeError` with guidance.
+
+Working alternatives:
+
+- Run the ua-parser REST server container (`ghcr.io/octanium91/ua-parser`) next to your application and call it over HTTP.
+- Use a glibc-based image instead (e.g. `python:3.12-slim`).
+- Use the Node.js or Java clients, which fall back to WebAssembly automatically on musl.
+
+Once the Go toolchain fix lands and the libraries are rebuilt, the bundled `libua-parser-linux-{arch}-musl.so` binaries will be picked up automatically on musl systems.
+
 ## Usage
 
 ```python

@@ -82,6 +82,16 @@ async function start() {
 start();
 ```
 
+### Alpine Linux / musl
+
+The native `koffi` path is **not available on Alpine Linux** (or any musl-based distribution): Go `c-shared` libraries currently cannot be loaded by the musl dynamic linker due to an upstream Go toolchain limitation ([golang/go#54805](https://github.com/golang/go/issues/54805)).
+
+On such systems the client detects the failure and **automatically falls back to the bundled WebAssembly module**, executed via `node:wasi` (requires Node.js >= 18.17). No code changes are needed — `init()` and `parse()` work exactly the same.
+
+The overhead is small because V8 JIT-compiles the WASM module: measured ~0.5s for `init()` and ~36ms for the first `parse()` (node:22-alpine); subsequent parses are faster and results are LRU-cached.
+
+> **Note**: In WASM mode `disable_auto_update` defaults to `true` (the WASM core assumes no network access), unlike native mode where it defaults to `false`. Pass `disable_auto_update: false` explicitly to `init()` if you want background regex updates in WASM mode.
+
 ## Collecting Client Hints
 
 Modern browsers "freeze" the User-Agent string. To get accurate data (like Windows 11 or full browser versions), you must use **Client Hints**.
@@ -218,7 +228,7 @@ The `init(config)` method accepts an optional configuration object:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `disable_auto_update` | `boolean` | `false` | If `true`, background regex updates are disabled. |
+| `disable_auto_update` | `boolean` | `false` (native), `true` (WASM) | If `true`, background regex updates are disabled. In WASM mode (browser, or the automatic Alpine/musl fallback) the default is `true`. |
 | `lru_cache_size` | `number` | `1000` | Number of entries to keep in the LRU cache. Set to `0` to disable. |
 | `update_url` | `string` | *(official uap-core)* | Custom URL to download `regexes.yaml` from. |
 | `update_interval` | `string` | `"24h"` | Interval for background updates (e.g., `"12h"`, `"1h"`). |
@@ -264,7 +274,7 @@ The package supports WebAssembly and is compatible with modern bundlers like Web
 
 ### Modern Bundlers (React, Vue, Vite, Webpack)
 
-When using a bundler, the parser automatically attempts to resolve `wasm_exec.js` and `ua-parser.wasm` assets. You can use it directly without manual setup:
+When using a bundler, the parser automatically attempts to resolve `wasm_exec.js` and `ua-parser-js.wasm` assets. You can use it directly without manual setup:
 
 ```javascript
 import { UaParser } from '@octanium91/ua-parser';
@@ -283,16 +293,18 @@ async function init() {
 
 If you are not using a bundler or the automatic resolution fails:
 
-1. Copy `ua-parser.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
-2. Include `wasm_exec.js` in your HTML:
+1. Copy `ua-parser-js.wasm` and `wasm_exec.js` from `node_modules/@octanium91/ua-parser/lib/` to your public assets directory (e.g., `public/`).
+2. Include `wasm_exec.js` (Go's official js/wasm loader) in your HTML:
    ```html
    <script src="/wasm_exec.js"></script>
    ```
 3. Initialize the parser providing the URL to the WASM file:
    ```javascript
-   const parser = new UaParser('/ua-parser.wasm');
+   const parser = new UaParser('/ua-parser-js.wasm');
    await parser.init();
    ```
+
+> **Note**: The browser uses the `ua-parser-js.wasm` build (js/wasm ABI, loaded via `wasm_exec.js`). The `ua-parser.wasm` file also shipped in `lib/` is a WASI (wasip1) build used only by the Node.js fallback on Alpine/musl — do not use it in the browser.
 
 ### React Example (WASM)
 For maximum accuracy, especially to detect **Windows 11**, always pass Client Hints collected from your server. See [Collecting Client Hints](#collecting-client-hints) for details.

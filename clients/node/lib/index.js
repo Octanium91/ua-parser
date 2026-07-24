@@ -1,17 +1,27 @@
 const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 
 let koffi;
+let koffiLoadError = null;
 let path;
 let fs;
 if (!isBrowser) {
-    koffi = require('koffi');
     path = require('path');
     fs = require('fs');
+    try {
+        koffi = require('koffi');
+    } catch (e) {
+        // koffi itself may fail to load (unsupported platform, missing prebuilt
+        // binding, etc.). Remember the error and let init() fall back to the
+        // bundled WebAssembly module instead of crashing at require time.
+        koffiLoadError = e;
+    }
 }
+
+let nativeFallbackWarned = false;
 
 class UaParser {
     /**
-     * @param {string} [libPath] Path to the shared library (.so, .dll, .dylib) or .wasm file URL (for browser)
+     * @param {string} [libPath] Path to the shared library (.so, .dll, .dylib) or, in the browser, the URL of the js/wasm module (ua-parser-js.wasm)
      */
     constructor(libPath) {
         this.libPath = libPath;
@@ -39,11 +49,14 @@ class UaParser {
                 // Native library failed — try WASM fallback
                 const wasmFile = path.join(__dirname, 'ua-parser.wasm');
                 if (fs.existsSync(wasmFile)) {
-                    console.warn('WARN: Native UA-Parser library failed to load: ' + nativeError.message);
-                    if (this._isMusl()) {
-                        console.warn('WARN: Detected musl libc (Alpine Linux). Go c-shared libraries require glibc.');
+                    if (!nativeFallbackWarned) {
+                        nativeFallbackWarned = true;
+                        console.warn('WARN: Native UA-Parser library failed to load: ' + nativeError.message);
+                        if (this._isMusl()) {
+                            console.warn('WARN: Native mode is unavailable on Alpine Linux / musl until the upstream Go toolchain fix lands (https://github.com/golang/go/issues/54805). WASM mode engages automatically.');
+                        }
+                        console.warn('WARN: Falling back to WebAssembly (WASM) mode.');
                     }
-                    console.warn('WARN: Falling back to WebAssembly (WASM) mode.');
                     this.isWasm = true;
                     await this._initWasmNode(config, wasmFile);
                 } else {
@@ -84,6 +97,11 @@ class UaParser {
     }
 
     _initNode(config) {
+        if (!koffi) {
+            const reason = koffiLoadError ? koffiLoadError.message : 'unknown error';
+            throw new Error(`Failed to load the koffi FFI module: ${reason}`);
+        }
+
         if (!this.libPath) {
             this.libPath = path.join(__dirname, this._getLibName());
         }
@@ -103,16 +121,20 @@ class UaParser {
             throw new Error(`Failed to load shared library: ${e.message}`);
         }
 
-        this.initFunc = this.lib.func('Init', 'void *', ['string']);
-        this.parseFunc = this.lib.func('Parse', 'void *', ['string']);
         this.freeFunc = this.lib.func('FreeString', 'void', ['void *']);
 
+        // The library returns malloc'd char* strings that must be released via
+        // its own FreeString (not the host allocator — matters on Windows where
+        // the DLL links a static CRT). A koffi disposable type converts the
+        // returned char* to a JS string and calls FreeString automatically.
+        const goStr = koffi.disposable(`UaGoStr${UaParser._typeSeq++}`, 'str', this.freeFunc);
+        this.initFunc = this.lib.func('Init', goStr, ['str']);
+        this.parseFunc = this.lib.func('Parse', goStr, ['str']);
+
         const configJson = JSON.stringify(config);
-        const errPtr = this.initFunc(configJson);
-        if (errPtr) {
-            const errStr = koffi.decode(errPtr, 'string');
-            this.freeFunc(errPtr);
-            throw new Error(`Failed to initialize parser: ${errStr}`);
+        const err = this.initFunc(configJson);
+        if (err) {
+            throw new Error(`Failed to initialize parser: ${err}`);
         }
     }
 
@@ -179,10 +201,12 @@ class UaParser {
         let wasmPath = this.libPath;
         if (!wasmPath) {
             try {
-                const resolved = require('./ua-parser.wasm');
+                // js/wasm ABI build (loaded via Go's wasm_exec.js). The wasip1
+                // build (ua-parser.wasm) is only used by the Node.js WASI fallback.
+                const resolved = require('./ua-parser-js.wasm');
                 wasmPath = resolved.default || resolved;
             } catch (e) {
-                wasmPath = '/ua-parser.wasm';
+                wasmPath = '/ua-parser-js.wasm';
             }
         }
         
@@ -231,10 +255,9 @@ class UaParser {
             }
             return result;
         } else {
-            const resPtr = this.parseFunc(payload);
-            if (resPtr) {
-                const resStr = koffi.decode(resPtr, 'string');
-                this.freeFunc(resPtr);
+            // parseFunc returns a JS string (disposable type frees the C memory)
+            const resStr = this.parseFunc(payload);
+            if (resStr) {
                 const result = JSON.parse(resStr);
                 if (result.error) {
                     throw new Error(result.error);
@@ -246,8 +269,14 @@ class UaParser {
     }
 }
 
+// Unique suffix for koffi named types (koffi forbids re-registering a name)
+UaParser._typeSeq = 0;
+
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = UaParser;
+    // Support both `import UaParser from ...` and `import { UaParser } from ...`
+    module.exports.UaParser = UaParser;
+    module.exports.default = UaParser;
 }
 if (isBrowser) {
     globalThis.UaParser = UaParser;

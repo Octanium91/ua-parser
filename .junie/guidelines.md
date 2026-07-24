@@ -14,12 +14,14 @@
 
 ## Go Version
 - The project uses **Go 1.26** as the minimum version.
-- For **musl/Alpine Linux** builds, Go's `c-shared` buildmode has a known TLS incompatibility with `dlopen()` ([golang/go#54805](https://github.com/golang/go/issues/54805)). The workaround is a **two-step build**: first `c-archive` (`.a`), then `gcc -shared` to produce the final `.so`. 
-- **Critical musl/Alpine Flags**:
-  1. The `gcc` step must **not** link `libc` or `lpthread` statically (avoid `-Wl,-Bstatic -lc`). Use dynamic linking and `-Wl,-z,lazy`.
-  2. Use `CGO_CFLAGS="-fPIC -ftls-model=global-dynamic"` during the Go build to avoid `initial-exec` TLS model.
-  3. Use `-Wl,-Bsymbolic` during the `gcc` step to resolve symbols locally and prevent "initial-exec TLS resolves to dynamic definition" errors.
-- This constraint applies to all build targets: `go.mod`, `Dockerfile`, CI workflows (`release.yml`), and Docker images used for musl builds.
+
+## musl/Alpine: native loading is impossible — do NOT try build-level workarounds
+- Go's `c-shared` (and `c-archive`) buildmode emits **initial-exec TLS** for the runtime; musl's dynamic loader rejects `dlopen()` of such libraries with "initial-exec TLS resolves to dynamic definition" ([golang/go#54805](https://github.com/golang/go/issues/54805), [#13492](https://github.com/golang/go/issues/13492)). This affects **every FFI host** (JNA, koffi, ctypes) on Alpine, even for `.so` files built natively with the musl toolchain.
+- **No build flags fix this** (verified empirically on Go 1.26.5, 2026-07-24): `CGO_CFLAGS="-ftls-model=global-dynamic"` only affects cgo C code, not the Go runtime's own TLS access; `-Wl,-Bsymbolic` is already applied by Go and does not help; a two-step `c-archive` + `gcc -shared` build has the same IE TLS relocations. `LD_PRELOAD` and gcompat also do not work (JVM segfault / loader-level rejection).
+- The upstream fix is the `-tls` linker flag (general-dynamic/TLSDESC) in [golang/go PR #75048](https://github.com/golang/go/pull/75048) — unmerged; expected in Go 1.27 at the earliest. When a Go release ships it, rebuild the musl `.so` artifacts and native loading on Alpine will start working; the client loaders already attempt the musl `.so` first by design.
+- **Supported strategy on Alpine until then**: the clients fall back to WebAssembly automatically — Java uses Chicory (with the `compiler` module — never remove it, the interpreter takes 60+ s to start), Node.js uses `node:wasi` (Node >= 18.17), the browser uses a separate `GOOS=js` build (`cmd/wasmjs`, `ua-parser-js.wasm` + `wasm_exec.js`). Python has no WASM fallback and raises a descriptive error on musl. Keep shipping the musl `.so` artifacts for forward compatibility.
+- The `ua-parser.wasm` (wasip1 reactor, `cmd/wasm`) and `ua-parser-js.wasm` (browser, `cmd/wasmjs`) are **different ABIs** — never interchange them.
+- ARM64 builds in CI run on **native `ubuntu-24.04-arm` runners** — do not reintroduce QEMU-emulated Go builds (flaky: [golang/go#68976](https://github.com/golang/go/issues/68976)).
 
 ## Code Quality
 - Maintain high test coverage for both Regex and Client Hints logic.

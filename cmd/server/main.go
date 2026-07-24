@@ -90,11 +90,16 @@ func main() {
 	})
 
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: mux,
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// done is closed once shutdown has fully completed (in-flight requests
+	// drained and the parser closed), so main can wait for it before exiting.
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		<-ctx.Done()
 		log.Println("Shutting down server...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -109,4 +114,7 @@ func main() {
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
+	// ListenAndServe returns as soon as Shutdown is initiated; wait until the
+	// shutdown goroutine finishes draining requests and closing the parser.
+	<-done
 }

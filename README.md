@@ -8,8 +8,8 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
   - **Native Library**: Importable Go package.
   - **Microservice**: Ready-to-use HTTP REST API server.
   - **Multi-Language Support**: Official wrappers for **Python**, **Node.js**, and **Java** (located in `/clients`).
-  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64**, **windows/amd64**, and **WebAssembly (WASI)**.
-- **Graceful Degradation (Java)**: Smart client architecture that attempts to load ultra-fast Native JNI drivers, but transparently falls back to a bundled pure-Java WebAssembly engine if native libraries are incompatible (e.g., on bare Alpine Linux).
+  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64** (glibc and musl artifacts), **windows/amd64**, **macOS (amd64/arm64)**, plus **WebAssembly** builds (WASI reactor and browser js/wasm).
+- **Graceful Degradation (Java & Node.js)**: Smart client architecture that attempts to load the ultra-fast native driver (JNA / koffi), but transparently falls back to a bundled WebAssembly engine if the native library cannot be loaded (e.g., on Alpine Linux).
 - **Client Hints Priority**: Automatically uses `Sec-CH-UA` headers with **highest priority** for precise OS and device detection (e.g., distinguishing Windows 11 from Windows 10 where the UA string might be ambiguous).
 - **Hot-Swap**: Background `regexes.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
@@ -25,6 +25,19 @@ We provide official wrappers for major languages that use the core shared librar
 - **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
 - **[Java](./clients/java)**: `com.github.Octanium91:ua-parser` (JitPack, GitHub Packages)
 
+### Support Matrix
+
+| Environment | Go | Java | Node.js | Python | REST Server |
+|---|---|---|---|---|---|
+| **Linux glibc** (amd64/arm64) | ✅ native | ✅ native (JNA) | ✅ native (koffi) | ✅ native (ctypes) | ✅ |
+| **Alpine / musl** (amd64/arm64) | ✅ native | ✅ WASM fallback¹ | ✅ WASM fallback¹ | ⚠️ clear error² | ✅ |
+| **Windows** (amd64) | ✅ native | ✅ native | ✅ native | ✅ native | ✅ |
+| **macOS** (amd64/arm64) | ✅ native | ✅ native | ✅ native | ✅ native | — |
+| **Browser** | — | — | ✅ js/wasm | — | — |
+
+¹ Automatic — native `dlopen` of Go libraries is impossible on musl until the Go toolchain fix ([golang/go#54805](https://github.com/golang/go/issues/54805), expected Go 1.27+); after that, rebuilt releases load natively with no client changes.
+² Python has no WASM fallback; on Alpine it raises a descriptive error suggesting the REST server, a glibc image, or the Java/Node clients.
+
 ### Package Registry Setup
 
 For Node.js and Java, you must configure your package manager to find the packages. 
@@ -33,7 +46,7 @@ For Node.js and Java, you must configure your package manager to find the packag
 |-------------|-------------------|------|
 | **Node.js** | Create `.npmrc` with GitHub registry | [Node.js Setup](./clients/node#installation) |
 | **Java**    | Configure GitHub repository | [Java Setup](./clients/java#installation) |
-| **Python** (not tested) | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
+| **Python**  | Manual download of `.whl` from Releases | [Python Setup](./clients/python#installation) |
 
 ### Hybrid Execution (Java)
 
@@ -44,17 +57,14 @@ Our Java client is designed to provide a significantly lower memory footprint an
 
 #### Graceful Degradation (Native + WASM)
 1. **Primary Route (Native)**: By default, the client uses **JNA** to load a native shared library (`.so`, `.dll`, or `.dylib`) for glibc-based Linux, Windows, or macOS. This provides maximum throughput and minimal overhead.
-   - **Linux Compatibility**: Native libraries are compiled with **GLIBC 2.31** (Ubuntu 20.04) to ensure compatibility with a wide range of distributions, including Amazon Linux 2023, Debian 11+, and RHEL 8+.
-2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`, or older systems with outdated GLIBC), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (using Chicory). This ensures compatibility across all environments where Java can run.
+   - **Linux Compatibility**: Native libraries are compiled against **GLIBC 2.31** (Debian 11) to ensure compatibility with a wide range of distributions, including Amazon Linux 2023, Debian 11+, RHEL 8+, and Ubuntu 20.04+.
+2. **Fallback Route (WASM)**: If the native library fails to load (e.g., on **Alpine Linux** using `musl libc`, or older systems with outdated GLIBC), the client will not crash with `UnsatisfiedLinkError`. Instead, it will log a **WARN** and transparently switch to an embedded **WebAssembly** engine (Chicory, pure JVM — the WASM module is compiled to JVM bytecode at startup). This ensures compatibility across all environments where Java can run.
 
 > [!NOTE]
-> **Performance Note on WASM Mode:** The first initialization of the WASM engine (first call to `init()` or `parse()`) can take **5-15 seconds**. This time is required for the interpreter to process the embedded regex database. Subsequent calls will be handled at normal operational speeds.
+> **Performance Note on WASM Mode:** The first initialization of the WASM engine takes a few seconds (~9s measured on Alpine) while the module is compiled to JVM bytecode; parsing is then fast and LRU-cached. Check the active mode via `parser.getBackendName()`.
 
 > [!IMPORTANT]
-> **⚠️ Alpine Linux Users:** To achieve maximum performance and **disable the WASM fallback**, install the `gcompat` library in your Dockerfile. This will enable the high-speed JNA driver:
-> ```dockerfile
-> RUN apk add --no-cache gcompat
-> ```
+> **⚠️ Alpine Linux Users:** Native loading of Go shared libraries on musl is currently **impossible at the toolchain level** ([golang/go#54805](https://github.com/golang/go/issues/54805)) — this is not fixable with `gcompat` (do **not** install it for this purpose), `LD_PRELOAD`, or build flags. The WASM fallback is the supported mode on Alpine and engages automatically. For native-level throughput on Alpine, run the REST server container (`ghcr.io/octanium91/ua-parser`) next to your app or use a glibc-based image. Once the upstream Go fix ships (expected Go 1.27+), rebuilt releases will load natively on Alpine with no client changes.
 
 ---
 
@@ -133,6 +143,14 @@ go run ./cmd/server/main.go
 
 ### Running with Docker
 
+Pre-built multi-arch images (amd64/arm64, Alpine-based, statically linked server):
+
+```bash
+docker run -p 8080:8080 ghcr.io/octanium91/ua-parser:latest
+```
+
+Or build locally:
+
 ```bash
 docker build -t ua-parser .
 docker run -p 8080:8080 ua-parser
@@ -208,12 +226,14 @@ The parser includes a dedicated logic to detect common bots and AI-related crawl
 
 The library can be compiled into a shared library for use with other languages via FFI. Pre-compiled binaries are available in GitHub Releases.
 
-- **Linux**: `libua-parser-linux-amd64.so`, `libua-parser-linux-arm64.so`
+- **Linux (glibc)**: `libua-parser-linux-amd64.so`, `libua-parser-linux-arm64.so`
+- **Linux (musl)**: `libua-parser-linux-amd64-musl.so`, `libua-parser-linux-arm64-musl.so` — shipped for forward compatibility; current Go toolchains cannot be `dlopen`'d on musl ([golang/go#54805](https://github.com/golang/go/issues/54805)), clients fall back to WASM on Alpine automatically
 - **Windows**: `ua-parser-windows-amd64.dll`
 - **macOS**: `libua-parser-darwin-amd64.dylib`, `libua-parser-darwin-arm64.dylib`
-- **WebAssembly**: `ua-parser.wasm` (Compiled for WASI, used as a universal fallback for the Java client).
+- **WebAssembly (WASI reactor)**: `ua-parser.wasm` — the automatic fallback engine for the Java (Chicory) and Node.js (`node:wasi`) clients
+- **WebAssembly (browser)**: `ua-parser-js.wasm` + `wasm_exec.js` — js/wasm build for browser usage (different ABI from the WASI build; not interchangeable)
 
-These files are the **required drivers** for integrations. Note that Python and Node.js packages already bundle these drivers automatically for all supported architectures.
+These files are the **required drivers** for integrations. Note that Python, Node.js, and Java packages already bundle these drivers automatically for all supported architectures.
 
 ### Exported Functions:
 - `Init(configJSON)` — Initializes the parser.
@@ -223,6 +243,10 @@ These files are the **required drivers** for integrations. Note that Python and 
 ## Project Structure
 
 - `/pkg/core` — Parser core (logic, cache, updater).
-- `/cmd/server` — Entry point for the HTTP server.
-- `/cmd/cshared` — Wrapper for compiling into a shared library.
 - `/pkg/core/resources` — Bundled regex patterns.
+- `/cmd/server` — Entry point for the HTTP server.
+- `/cmd/cshared` — Wrapper for compiling into a native shared library (C-FFI).
+- `/cmd/wasm` — WebAssembly WASI reactor build (`ua-parser.wasm`, fallback engine for Java/Node.js).
+- `/cmd/wasmjs` — WebAssembly js/wasm build for browsers (`ua-parser-js.wasm`).
+- `/cmd/gen-json` — Converts `regexes.yaml` to embedded JSON (run before building).
+- `/clients` — Official Go, Python, Node.js, and Java wrappers.

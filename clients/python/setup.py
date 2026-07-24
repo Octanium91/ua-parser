@@ -8,7 +8,7 @@ setup(
         "uaparser": ["*.so", "*.dll", "*.dylib", "*.h"],
     },
     description="Python wrapper for the Universal User-Agent Parser",
-    long_description=open("README.md").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="uaparser",
     url="https://github.com/Octanium91/ua-parser",
@@ -16,6 +16,5 @@ setup(
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
     ],
 )
