@@ -1,0 +1,492 @@
+name: Integration Test (published release)
+
+# Runs the "real user" integration flow against the ALREADY-PUBLISHED release:
+# Go (go get), Node (release tarball, no token), Python (release wheel),
+# Java (JitPack), the browser js/wasm build, and the Docker REST image — on
+# both glibc and Alpine/musl. Nothing here checks out the repo; every artifact
+# is pulled from its public channel exactly as an external user would.
+#
+# Triggered via workflow_run because a release created by GITHUB_TOKEN does not
+# emit a `release: published` event. Can also be run manually against any tag
+# (manual runs are verify-only — they never trigger the destructive rollback).
+#
+# On failure of a HERMETIC path, the `rollback` job retracts the release, tag,
+# and package versions. NOTE: this cannot fully un-publish two channels — the
+# Go module proxy and JitPack serve whatever git tag exists, so a corrected
+# release must bump the version; deletion only stops NEW consumers of the tag.
+
+on:
+  workflow_run:
+    workflows: ["Build and Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test (verify-only, no rollback)"
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
+jobs:
+  setup:
+    name: Resolve release tag
+    # For workflow_run, only proceed when the release pipeline succeeded.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      repo_lc: ${{ steps.v.outputs.repo_lc }}
+    steps:
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Pin to the tag that TRIGGERED this run (for workflow_run, head_branch
+          # is the tag of the tag-push build). Never fall back to releases/latest:
+          # that would decouple the test — and the destructive rollback — from the
+          # release under test and could target a newer, good release.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::error::Could not resolve the release tag to test"; exit 1
+          fi
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::No GitHub Release found for tag $TAG"; exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "repo_lc=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "Testing release tag: $TAG"
+
+  go:
+    name: Go (${{ matrix.image }})
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["golang:1.26-bookworm", "golang:1.26-alpine"]
+    steps:
+      - name: Pull image (retry)
+        run: |
+          n=0; until [ $n -ge 3 ]; do docker pull ${{ matrix.image }} && break; n=$((n+1)); echo "pull retry $n"; sleep 10; done; [ $n -lt 3 ]
+      - name: Write consumer program
+        run: |
+          mkdir -p work
+          cat > work/main.go <<'EOF'
+          package main
+
+          import (
+          	"fmt"
+          	"os"
+
+          	uaparser "github.com/Octanium91/ua-parser/clients/go"
+          )
+
+          func main() {
+          	p, err := uaparser.New(uaparser.Config{DisableAutoUpdate: true, LRUCacheSize: 100})
+          	if err != nil {
+          		panic(err)
+          	}
+          	r := p.Parse(os.Getenv("UA"), nil)
+          	fmt.Printf("browser=%s os=%s\n", r.Browser.Name, r.OS.Name)
+          	if r.Browser.Name != "Chrome" {
+          		os.Exit(1)
+          	}
+          }
+          EOF
+      - name: go get + static build + run
+        run: |
+          docker run --rm -v "$PWD/work:/work" -w /work \
+            -e UA="$UA" -e TAG="${{ needs.setup.outputs.tag }}" \
+            ${{ matrix.image }} sh -c '
+              set -e
+              go mod init itest
+              n=0; until [ $n -ge 3 ]; do go get github.com/Octanium91/ua-parser/clients/go@"$TAG" && break; n=$((n+1)); echo "go get retry $n"; sleep 10; done; [ $n -lt 3 ]
+              CGO_ENABLED=0 go build -o app .
+              ./app
+            '
+
+  node:
+    name: Node (${{ matrix.image }})
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["node:22-bookworm-slim", "node:22-alpine"]
+    steps:
+      - name: Pull image (retry)
+        run: |
+          n=0; until [ $n -ge 3 ]; do docker pull ${{ matrix.image }} && break; n=$((n+1)); echo "pull retry $n"; sleep 10; done; [ $n -lt 3 ]
+      - name: Write test program
+        run: |
+          mkdir -p work
+          cat > work/test.mjs <<'EOF'
+          import UaParser from '@octanium91/ua-parser';
+          const p = new UaParser();
+          await p.init({ disable_auto_update: true, lru_cache_size: 100 });
+          const r = p.parse(process.env.UA, {});
+          console.log('mode=' + (p.isWasm ? 'wasm' : 'native'), 'browser=' + r.browser.name);
+          if (r.browser.name !== 'Chrome') process.exit(1);
+          EOF
+      - name: install release tarball (no token) + run
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.setup.outputs.tag }}/octanium91-ua-parser-$V.tgz"
+          docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" -e URL="$URL" ${{ matrix.image }} sh -c '
+            set -e
+            npm init -y >/dev/null 2>&1
+            n=0; until [ $n -ge 3 ]; do npm install "$URL" && break; n=$((n+1)); echo "npm retry $n"; sleep 10; done; [ $n -lt 3 ]
+            node test.mjs
+          '
+
+  python:
+    name: Python (${{ matrix.image }})
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: "python:3.12-slim"
+            expect: success
+          - image: "python:3.12-alpine"
+            expect: error
+    steps:
+      - name: Pull image (retry)
+        run: |
+          n=0; until [ $n -ge 3 ]; do docker pull ${{ matrix.image }} && break; n=$((n+1)); echo "pull retry $n"; sleep 10; done; [ $n -lt 3 ]
+      - name: Write test program
+        run: |
+          mkdir -p work
+          cat > work/test.py <<'EOF'
+          import os, sys
+          from uaparser import UaParser
+          p = UaParser()
+          p.init({"disable_auto_update": True, "lru_cache_size": 100})
+          r = p.parse(os.environ["UA"])
+          print("browser", r["browser"]["name"])
+          sys.exit(0 if r["browser"]["name"] == "Chrome" else 1)
+          EOF
+      - name: install release wheel + run
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.setup.outputs.tag }}/ua_parser_core-$V-py3-none-any.whl"
+          set +e
+          # pip install (network) is retried inside the container; python test.py
+          # runs exactly once so its exit code reflects the app, not a fetch flake.
+          OUT=$(docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" -e URL="$URL" ${{ matrix.image }} sh -c '
+            n=0; until [ $n -ge 3 ]; do pip install --quiet "$URL" && break; n=$((n+1)); sleep 10; done; [ $n -lt 3 ] || exit 42
+            python test.py
+          ' 2>&1)
+          CODE=$?
+          echo "$OUT"
+          [ $CODE -eq 42 ] && { echo "::error::wheel download failed after retries (infra, not a regression)"; exit 1; }
+          if [ "${{ matrix.expect }}" = "success" ]; then
+            [ $CODE -eq 0 ] || { echo "::error::Python native path expected to succeed"; exit 1; }
+            echo "OK: native ctypes parsed correctly"
+          else
+            echo "$OUT" | grep -q "golang/go/issues/54805" \
+              || { echo "::error::Expected the descriptive musl RuntimeError referencing golang/go#54805"; exit 1; }
+            echo "OK: descriptive musl error fired as designed"
+          fi
+
+  browser:
+    name: Browser (js/wasm)
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull image (retry)
+        run: |
+          n=0; until [ $n -ge 3 ]; do docker pull node:22-bookworm-slim && break; n=$((n+1)); echo "pull retry $n"; sleep 10; done; [ $n -lt 3 ]
+      - name: Fetch assets (retry) + write harness
+        run: |
+          mkdir -p work && cd work
+          B="https://github.com/${{ github.repository }}/releases/download/${{ needs.setup.outputs.tag }}"
+          for f in ua-parser-js.wasm wasm_exec.js; do
+            n=0; until [ $n -ge 3 ]; do curl -sfL "$B/$f" -o "$f" && break; n=$((n+1)); echo "curl $f retry $n"; sleep 10; done; [ $n -lt 3 ]
+          done
+          cat > harness.cjs <<'EOF'
+          const fs = require('fs');
+          require('./wasm_exec.js'); // defines globalThis.Go
+          (async () => {
+            const go = new Go();
+            const bytes = fs.readFileSync('./ua-parser-js.wasm');
+            const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
+            go.run(instance); // registers globalThis.initUA / parseUA, then blocks
+            initUA(JSON.stringify({ disable_auto_update: true }));
+            const r = JSON.parse(parseUA(JSON.stringify({ ua: process.env.UA, headers: {} })));
+            console.log('browser=' + r.browser.name);
+            if (r.browser.name !== 'Chrome') process.exit(1);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          EOF
+      - name: Run the documented browser ABI in Node
+        run: |
+          docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" \
+            node:22-bookworm-slim node harness.cjs
+
+  docker-rest:
+    name: Docker REST image
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Pull image (retry)
+        run: |
+          IMG="ghcr.io/${{ needs.setup.outputs.repo_lc }}:${{ needs.setup.outputs.tag }}"
+          n=0; until [ $n -ge 3 ]; do docker pull "$IMG" && break; n=$((n+1)); echo "pull retry $n"; sleep 10; done; [ $n -lt 3 ]
+      - name: Default endpoints (/ and /health)
+        run: |
+          IMG="ghcr.io/${{ needs.setup.outputs.repo_lc }}:${{ needs.setup.outputs.tag }}"
+          docker run -d --name ua -p 8080:8080 "$IMG"
+          for i in $(seq 1 15); do curl -sf http://localhost:8080/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -sf http://localhost:8080/health | grep -q '"status":"ok"'
+          curl -sf -X POST http://localhost:8080/ -H 'Content-Type: application/json' \
+            -d "{\"ua\":\"$UA\"}" | grep -q '"name":"Chrome"'
+          docker rm -f ua
+      - name: UA_BASE_PATH shift (/api)
+        run: |
+          IMG="ghcr.io/${{ needs.setup.outputs.repo_lc }}:${{ needs.setup.outputs.tag }}"
+          docker run -d --name ua2 -p 8080:8080 -e UA_BASE_PATH=/api "$IMG"
+          for i in $(seq 1 15); do curl -sf http://localhost:8080/api/health >/dev/null 2>&1 && break; sleep 1; done
+          curl -sf http://localhost:8080/api/health | grep -q '"status":"ok"'
+          curl -sf -X POST http://localhost:8080/api -H 'Content-Type: application/json' \
+            -d "{\"ua\":\"$UA\"}" | grep -q '"name":"Chrome"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/health)
+          [ "$code" = "404" ] || { echo "::error::old /health should be 404 under UA_BASE_PATH, got $code"; exit 1; }
+          docker rm -f ua2
+
+  java:
+    name: Java (JitPack, glibc + Alpine)
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Write Maven project
+        run: |
+          mkdir -p work/src/main/java/it
+          TAG="${{ needs.setup.outputs.tag }}"
+          cat > work/pom.xml <<EOF
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>it</groupId>
+            <artifactId>itest</artifactId>
+            <version>1.0</version>
+            <properties>
+              <maven.compiler.source>11</maven.compiler.source>
+              <maven.compiler.target>11</maven.compiler.target>
+              <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+            </properties>
+            <repositories>
+              <repository><id>jitpack.io</id><url>https://jitpack.io</url></repository>
+            </repositories>
+            <dependencies>
+              <dependency>
+                <groupId>com.github.Octanium91</groupId>
+                <artifactId>ua-parser</artifactId>
+                <version>${TAG}</version>
+              </dependency>
+            </dependencies>
+            <build>
+              <finalName>itest</finalName>
+              <plugins>
+                <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-shade-plugin</artifactId>
+                  <version>3.5.1</version>
+                  <executions>
+                    <execution>
+                      <phase>package</phase>
+                      <goals><goal>shade</goal></goals>
+                      <configuration>
+                        <transformers>
+                          <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                            <mainClass>it.Main</mainClass>
+                          </transformer>
+                        </transformers>
+                      </configuration>
+                    </execution>
+                  </executions>
+                </plugin>
+              </plugins>
+            </build>
+          </project>
+          EOF
+          cat > work/src/main/java/it/Main.java <<'EOF'
+          package it;
+
+          import com.github.octanium91.UaParser;
+          import java.util.HashMap;
+
+          public class Main {
+              public static void main(String[] args) {
+                  UaParser parser = new UaParser();
+                  UaParser.Config cfg = new UaParser.Config();
+                  cfg.disableAutoUpdate = true;
+                  cfg.lruCacheSize = 100;
+                  parser.init(cfg);
+                  UaParser.Result r = parser.parse(System.getenv("UA"), new HashMap<>());
+                  String browser = (r.browser == null) ? "null" : r.browser.name;
+                  System.out.println("backend=" + parser.getBackendName() + " browser=" + browser);
+                  if (r.browser == null || !"Chrome".equals(r.browser.name)) {
+                      System.exit(1);
+                  }
+              }
+          }
+          EOF
+      - name: Build fat jar (JitPack resolves the release on first request; retried)
+        run: |
+          # JitPack builds the artifact on first request per tag and can be slow
+          # or briefly unavailable. Retry so transient JitPack latency does not
+          # fail the job (Java is intentionally NOT a rollback trigger, but we
+          # still want it green when JitPack is merely warming up).
+          n=0
+          until [ $n -ge 3 ]; do
+            docker run --rm -v "$PWD/work:/work" -v uaparser-m2:/root/.m2 -w /work \
+              maven:3.9-eclipse-temurin-17 mvn -B -q -DskipTests clean package && break
+            n=$((n+1)); echo "JitPack build attempt $n failed; retrying in 30s..."; sleep 30
+          done
+          [ $n -lt 3 ]
+      - name: Run on glibc (expect native JnaBackend)
+        run: |
+          OUT=$(docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" \
+            eclipse-temurin:17-jre java -jar target/itest.jar)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'backend=JnaBackend' || { echo "::error::glibc should use native JnaBackend"; exit 1; }
+          echo "$OUT" | grep -q 'browser=Chrome'    || { echo "::error::glibc parse failed"; exit 1; }
+      - name: Run on Alpine (expect WASM fallback)
+        run: |
+          OUT=$(docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" \
+            eclipse-temurin:17-jre-alpine java -jar target/itest.jar)
+          echo "$OUT"
+          echo "$OUT" | grep -q 'backend=WasmBackend' || { echo "::error::Alpine should fall back to WasmBackend"; exit 1; }
+          echo "$OUT" | grep -q 'browser=Chrome'      || { echo "::error::Alpine WASM parse failed"; exit 1; }
+
+  rollback:
+    name: Roll back failed release
+    needs: [setup, go, node, python, browser, docker-rest]
+    # Fire ONLY when:
+    #  - this is the automatic post-release run (never a manual dispatch),
+    #  - the run was not cancelled,
+    #  - setup succeeded (so the tag is the real triggering release), and
+    #  - a HERMETIC path genuinely failed.
+    # Java/JitPack is excluded on purpose: it depends on an external build
+    # service, so its flakiness must never delete an otherwise-good release.
+    # Every trigger job retries its network fetches, so a transient blip does
+    # not reach this job. Kill switch: repo variable DISABLE_AUTO_ROLLBACK=true.
+    if: >
+      !cancelled()
+      && github.event_name == 'workflow_run'
+      && needs.setup.result == 'success'
+      && vars.DISABLE_AUTO_ROLLBACK != 'true'
+      && (needs.go.result == 'failure'
+          || needs.node.result == 'failure'
+          || needs.python.result == 'failure'
+          || needs.browser.result == 'failure'
+          || needs.docker-rest.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      TAG: ${{ needs.setup.outputs.tag }}
+      VER: ${{ needs.setup.outputs.version }}
+      OWNER: ${{ github.repository_owner }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Announce
+        run: echo "::warning::Integration tests failed for $TAG — retracting the release, tag, and published packages."
+      - name: Delete the GitHub Release and its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already absent — nothing to delete."
+          else
+            gh release delete "$TAG" --repo "$REPO" --cleanup-tag --yes
+          fi
+          # Verify the tag is actually gone; fail loudly if it survives (e.g. protected tag).
+          if gh api "repos/$REPO/git/refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG still exists after delete (protected tag or permissions?)"; exit 1
+          fi
+          echo "Release and tag $TAG removed."
+      - name: Delete published package versions (best effort)
+        continue-on-error: true
+        env:
+          # GITHUB_TOKEN generally CANNOT delete user-owned package versions.
+          # Set secrets.PACKAGE_CLEANUP_TOKEN to a PAT with delete:packages to
+          # enable this; otherwise the step warns and leaves packages in place.
+          GH_TOKEN: ${{ secrets.PACKAGE_CLEANUP_TOKEN || github.token }}
+          HAS_PAT: ${{ secrets.PACKAGE_CLEANUP_TOKEN != '' }}
+        run: |
+          if [ "$HAS_PAT" != "true" ]; then
+            echo "::warning::PACKAGE_CLEANUP_TOKEN not set — GITHUB_TOKEN cannot delete user-owned packages; skipping package cleanup (release/tag were still removed)."
+            exit 0
+          fi
+          OWNER_LC=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          delete_version() {
+            type="$1"; name="$2"; match="$3"; owner="$4"
+            echo "== $type/$name : versions matching '$match'"
+            ids=$(gh api --paginate "users/$owner/packages/$type/$name/versions" \
+              --jq ".[] | select(.name==\"$match\" or ((.metadata.container.tags // []) | index(\"$match\"))) | .id" 2>/dev/null) \
+              || { echo "::warning::   could not list $type/$name versions"; return 0; }
+            if [ -z "$ids" ]; then echo "   no matching version"; return 0; fi
+            for id in $ids; do
+              err=$(gh api -X DELETE "users/$owner/packages/$type/$name/versions/$id" 2>&1) && { echo "   deleted version id=$id"; continue; }
+              if echo "$err" | grep -qi "last tagged version"; then
+                gh api -X DELETE "users/$owner/packages/$type/$name" >/dev/null 2>&1 \
+                  && echo "   deleted whole package $type/$name (was last tagged version)" \
+                  || echo "::warning::   failed to delete package $type/$name"
+              else
+                echo "::warning::   failed to delete $type/$name version $id: $err"
+              fi
+            done
+          }
+          delete_version container ua-parser "$TAG" "$OWNER_LC"
+          delete_version npm ua-parser "$VER" "$OWNER"
+          delete_version maven "com.github.$OWNER.ua-parser" "$VER" "$OWNER"
+      - name: Result
+        run: |
+          echo "Rollback finished for $TAG."
+          echo "Note: the Go module proxy and JitPack serve any git tag that existed;"
+          echo "a corrected release must use a new version — deletion only stops new consumers of $TAG."
+
+  summary:
+    name: Integration summary
+    needs: [setup, go, node, python, browser, docker-rest, java]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "Release:     ${{ needs.setup.outputs.tag }}"
+          echo "Go:          ${{ needs.go.result }}"
+          echo "Node:        ${{ needs.node.result }}"
+          echo "Python:      ${{ needs.python.result }}"
+          echo "Browser:     ${{ needs.browser.result }}"
+          echo "Docker REST: ${{ needs.docker-rest.result }}"
+          echo "Java:        ${{ needs.java.result }}  (reported; not a rollback trigger)"
+          # Fail the run if any path is red (visibility). Only the hermetic paths
+          # drive the destructive rollback; Java failing turns the run red for a
+          # human to investigate but never auto-deletes.
+          if [ "${{ needs.go.result }}" != "success" ] || \
+             [ "${{ needs.node.result }}" != "success" ] || \
+             [ "${{ needs.python.result }}" != "success" ] || \
+             [ "${{ needs.browser.result }}" != "success" ] || \
+             [ "${{ needs.docker-rest.result }}" != "success" ] || \
+             [ "${{ needs.java.result }}" != "success" ]; then
+            echo "::error::One or more integration paths failed for ${{ needs.setup.outputs.tag }}"; exit 1
+          fi
+          echo "All published integration paths verified for ${{ needs.setup.outputs.tag }}"
