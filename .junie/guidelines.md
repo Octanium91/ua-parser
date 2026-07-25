@@ -16,6 +16,10 @@
 ## Header Priority
 - When parsing User-Agent data, **Client Hints (Sec-CH-UA headers) must take priority** over the raw User-Agent string.
 - The logic should first check for available Client Hints to determine the Operating System (e.g., distinguishing Windows 11 from Windows 10) and Device details before falling back to Regex-based UA parsing.
+- The UA string is **frozen** in modern Chromium (browser full version → MAJOR.0.0.0, Windows → always NT 10.0 x64, macOS → always 10_15_7, Android → always "Android 10; K"): the full browser version, Win10/11 split, real macOS/Android versions, device model, and CPU architecture are ONLY available via CH. Never "simplify" the CH layer away.
+- Consumed hints: `sec-ch-ua` (low-entropy fallback + brand correction for Brave/Opera GX), `-mobile`, `-platform`, `-platform-version`, `-model`, `-arch` + `-bitness` (normalized to amd64/arm64/x86/arm), `-full-version-list` (browser version + true Blink version from the "Chromium" entry), `-form-factors` (tablet/XR/watch/automotive). **Every consumed header must be part of the LRU cache key** (`cacheKeyHeaders` in parser.go) — a header that affects output but not the key poisons the cache.
+- CH platform names are normalized to uap-core vocabulary ("macOS" → "Mac OS X"); platform "Unknown" must never overwrite UA-derived data.
+- `is_ai_crawler` always implies `is_bot`. The `aiBots` token list is maintained against vendor docs / ai-robots-txt; known bot-substring false positives (Cubot phones) are handled via `botFalsePositiveTokens`.
 
 ## Regex database (embedding) — do NOT reintroduce code generation
 - `pkg/core/parser.go` embeds the regex database directly as YAML: `//go:embed resources/regexes.yaml`, and `core.New` parses it with `yaml.Unmarshal` at init. The module is therefore **self-contained on the Go proxy** — a plain `go get` + `go build` works with no extra steps.
@@ -48,7 +52,8 @@
 - The parse endpoint is POST-only (`405` otherwise); `/health` is GET-only.
 
 ## CI/CD
-- The project uses **GitHub Actions**, with **two** workflows:
+- The project uses **GitHub Actions**, with **three** workflows:
+  - `sync-uap-core.yml` (weekly cron + manual): refreshes the embedded regex snapshot from sha-pinned uap-core master, records the sha in `pkg/core/resources/UAP_CORE_SHA`, runs the full test suite, and opens a review PR. Upstream regressions exist (uap-core#667) — never convert this to a blind auto-commit.
   - `release.yml` (trigger: push of a `v*` tag): `test` → `build-server` → `build-shared-libs` (matrix) → `docker` → `publish-java` / `publish-node` / `publish-python` → `release`. ARM64 builds run on **native `ubuntu-24.04-arm` runners** — do not reintroduce QEMU-emulated Go builds (flaky: [golang/go#68976](https://github.com/golang/go/issues/68976)). Any job that attaches files to the GitHub Release (e.g. `publish-node` attaching the npm tarball, `publish-java` attaching the JAR) needs `permissions: contents: write`.
   - `integration-test.yml` (trigger: `workflow_run` after "Build and Release" succeeds, plus manual `workflow_dispatch`): see "Integration testing".
 - Any change to the core logic or infrastructure should be verified against these workflows, and any change to a client or to the set of published artifacts must be reflected in `integration-test.yml`.

@@ -1,0 +1,82 @@
+name: Sync uap-core regexes
+
+# Keeps the EMBEDDED regex snapshot (pkg/core/resources/regexes.yaml) fresh:
+# weekly it fetches the sha-pinned latest uap-core master, validates it against
+# the full test suite, and opens a PR with the diff. The runtime hot-swap
+# updater covers running processes; this workflow covers the compiled-in
+# default that new builds ship with.
+#
+# Upstream regressions are real (e.g. uap-core#667), so the flow is PR-based —
+# a human reviews the diff — and tests run BEFORE the PR is opened.
+#
+# Note: PRs created with the default GITHUB_TOKEN do not trigger other
+# workflows (CI). That is acceptable here because this workflow already ran the
+# tests; set a PAT in secrets.SYNC_TOKEN if PR CI runs are wanted anyway.
+
+on:
+  schedule:
+    - cron: "17 5 * * 1" # weekly, Monday 05:17 UTC (off-peak minute)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch latest sha-pinned regexes.yaml
+        id: fetch
+        run: |
+          SHA=$(curl -fsSL https://api.github.com/repos/ua-parser/uap-core/commits/master | jq -r .sha)
+          [ -n "$SHA" ] && [ "$SHA" != "null" ] || { echo "::error::could not resolve uap-core master sha"; exit 1; }
+          echo "Upstream sha: $SHA"
+          curl -fsSL "https://raw.githubusercontent.com/ua-parser/uap-core/$SHA/regexes.yaml" \
+            -o pkg/core/resources/regexes.yaml
+          echo "$SHA" > pkg/core/resources/UAP_CORE_SHA
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:10}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet -- pkg/core/resources/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Embedded snapshot already up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git --no-pager diff --stat -- pkg/core/resources/
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          go-version: '1.26'
+
+      - name: Validate new snapshot (build + full test suite)
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          go build ./...
+          go test -count=1 ./...
+
+      - name: Open PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+          branch: chore/sync-uap-core
+          delete-branch: true
+          commit-message: "chore(core): sync uap-core regexes.yaml (upstream ${{ steps.fetch.outputs.short }})"
+          title: "chore(core): sync uap-core regexes.yaml (upstream ${{ steps.fetch.outputs.short }})"
+          labels: dependencies
+          body: |
+            Automated weekly sync of the embedded regex database.
+
+            - Upstream: [ua-parser/uap-core@${{ steps.fetch.outputs.short }}](https://github.com/ua-parser/uap-core/commit/${{ steps.fetch.outputs.sha }})
+            - Provenance file `pkg/core/resources/UAP_CORE_SHA` updated.
+            - `go build ./...` and `go test ./...` passed against the new snapshot **before** this PR was opened.
+
+            Review the regex diff for upstream regressions (see ua-parser/uap-core#667 for precedent) before merging.

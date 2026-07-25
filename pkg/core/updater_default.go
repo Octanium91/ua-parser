@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -13,10 +14,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// maxRegexesSize caps the update download; the upstream regexes.yaml is well
+// under 1 MB, so 16 MB is generous while preventing an OOM from a
+// misconfigured or compromised endpoint.
+const maxRegexesSize = 16 << 20
+
 func (p *Parser) startUpdater() {
 	interval := 24 * time.Hour
 	if p.config.UpdateInterval != "" {
-		if d, err := time.ParseDuration(p.config.UpdateInterval); err == nil {
+		if d, err := time.ParseDuration(p.config.UpdateInterval); err != nil {
+			log.Printf("Invalid update_interval %q (%v); using default 24h", p.config.UpdateInterval, err)
+		} else if d <= 0 {
+			// time.NewTicker panics on non-positive intervals.
+			log.Printf("Non-positive update_interval %q; using default 24h", p.config.UpdateInterval)
+		} else {
 			interval = d
 		}
 	}
@@ -48,7 +59,7 @@ func (p *Parser) startUpdater() {
 				}
 			}()
 
-			ticker := time.NewTicker(interval)
+			ticker := time.NewTicker(jitter(interval))
 			defer ticker.Stop()
 
 			for {
@@ -58,6 +69,9 @@ func (p *Parser) startUpdater() {
 				case <-ticker.C:
 					p.updateRegexes()
 					backoff = 0
+					// Re-jitter so fleets started together do not converge
+					// into a synchronized stampede on the update URL.
+					ticker.Reset(jitter(interval))
 				}
 			}
 		}()
@@ -69,6 +83,15 @@ func (p *Parser) startUpdater() {
 		default:
 		}
 	}
+}
+
+// jitter spreads an interval by ±10% to avoid synchronized fleet-wide fetches.
+func jitter(d time.Duration) time.Duration {
+	spread := int64(d) / 10
+	if spread <= 0 {
+		return d
+	}
+	return d - time.Duration(spread/2) + time.Duration(rand.Int63n(spread))
 }
 
 func (p *Parser) updateRegexes() {
@@ -83,21 +106,40 @@ func (p *Parser) updateRegexes() {
 		Timeout: 30 * time.Second,
 	}
 
-	resp, err := client.Get(url)
+	// Bind the request to the parser context so Close() cancels an in-flight
+	// download instead of blocking shutdown for up to the client timeout.
+	req, err := http.NewRequestWithContext(p.ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("Failed to build regexes request: %v", err)
+		return
+	}
+	if p.lastETag != "" {
+		req.Header.Set("If-None-Match", p.lastETag)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to download regexes: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotModified {
+		log.Println("Regexes unchanged (304)")
+		return
+	}
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Failed to download regexes: status code %d", resp.StatusCode)
 		return
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxRegexesSize+1))
 	if err != nil {
 		log.Printf("Failed to read regexes response: %v", err)
+		return
+	}
+	if len(data) > maxRegexesSize {
+		log.Printf("Regexes response exceeds %d bytes; refusing to load", maxRegexesSize)
 		return
 	}
 
@@ -122,10 +164,17 @@ func (p *Parser) updateRegexes() {
 	p.uap = newUap
 	p.mu.Unlock()
 
+	// Bump the generation BEFORE purging: any Parse that started against the
+	// old database will see a changed generation and skip caching its result,
+	// so a stale entry cannot be re-added after the purge.
+	p.gen.Add(1)
+
 	// Clear cache when regexes change
 	if p.cache != nil {
 		p.cache.Purge()
 	}
+
+	p.lastETag = resp.Header.Get("ETag")
 
 	log.Println("Regexes updated successfully")
 }

@@ -43,9 +43,11 @@ func TestParser(t *testing.T) {
 		t.Errorf("Expected OS Version 11 from Client Hints, got %s", res.OS.Version)
 	}
 
-	// Test Client Hints for Model and Arch
+	// Test Client Hints for Model and Arch (real Chromium values: arch is
+	// "arm"/"x86" with bitness carried separately)
 	headers["Sec-CH-UA-Model"] = `"Pixel 5"`
-	headers["Sec-CH-UA-Arch"] = `"arm64"`
+	headers["Sec-CH-UA-Arch"] = `"arm"`
+	headers["Sec-CH-UA-Bitness"] = `"64"`
 	headers["Sec-CH-UA-Mobile"] = `?1`
 	res = p.Parse(ua, headers)
 	if res.Device.Model != "Pixel 5" {
@@ -61,10 +63,12 @@ func TestParser(t *testing.T) {
 		t.Errorf("Expected Category mobile, got %s", res.Category)
 	}
 
-	// Test Client Hints overriding UA for Architecture
+	// Test Client Hints overriding UA for Architecture (Windows-on-ARM: the
+	// frozen UA always claims x64, only CH tells the truth)
 	uaAMD64 := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 	headersArch := map[string]string{
-		"Sec-CH-UA-Arch": `"arm64"`,
+		"Sec-CH-UA-Arch":    `"arm"`,
+		"Sec-CH-UA-Bitness": `"64"`,
 	}
 	res = p.Parse(uaAMD64, headersArch)
 	if res.CPU.Architecture != "arm64" {
@@ -200,13 +204,23 @@ func TestAICrawlerDetection(t *testing.T) {
 	}
 	defer p.Close()
 
+	// Real 2026 tokens; several deliberately contain NO generic bot marker
+	// ("Claude-User", "meta-externalagent") to prove ai => bot forcing.
 	aiCrawlers := []string{
 		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.0; +https://openai.com/gptbot)",
 		"ChatGPT-User/1.0",
-		"Mozilla/5.0 (compatible; Google-Extended; +http://google.com)",
+		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot",
 		"ClaudeBot/1.0",
+		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +Claude-User@anthropic.com)",
+		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +claude.com)",
 		"anthropic-ai/1.0",
 		"Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
+		"meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)",
+		"Mozilla/5.0 (Linux; Android 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; Bytespider; spider-feedback@bytedance.com)",
+		"Mozilla/5.0 (compatible; Applebot-Extended/1.0; +https://support.apple.com/en-us/119829)",
+		"Mozilla/5.0 (compatible; Amazonbot/0.1; +https://developer.amazon.com/support/amazonbot)",
+		"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; MistralAI-User/1.0; +https://docs.mistral.ai/robots)",
 		"CCBot/2.0 (https://commoncrawl.org/faq/)",
 	}
 
@@ -214,6 +228,12 @@ func TestAICrawlerDetection(t *testing.T) {
 		res := p.Parse(ua, nil)
 		if !res.IsAICrawler {
 			t.Errorf("Expected IsAICrawler=true for UA=%q", ua)
+		}
+		if !res.IsBot {
+			t.Errorf("Expected IsBot=true (AI crawler implies bot) for UA=%q", ua)
+		}
+		if res.Category != "bot" {
+			t.Errorf("Expected Category=bot for UA=%q, got %q", ua, res.Category)
 		}
 	}
 }
@@ -293,9 +313,20 @@ func TestCacheHit(t *testing.T) {
 	res1 := p.Parse(ua, nil)
 	res2 := p.Parse(ua, nil)
 
-	// Both should return the same pointer (cache hit)
-	if res1 != res2 {
-		t.Errorf("Expected cache hit to return same pointer, got different results")
+	// Cache hits return equal values but DISTINCT pointers (copy-on-return),
+	// so one caller's mutation can never corrupt another caller's result.
+	if res1 == res2 {
+		t.Errorf("Expected distinct pointers from cache (copy-on-return), got shared pointer")
+	}
+	if *res1 != *res2 {
+		t.Errorf("Expected equal values from cache hit, got %+v vs %+v", res1, res2)
+	}
+
+	// Mutation isolation: corrupting one result must not leak into the cache.
+	res1.Browser.Name = "MUTATED"
+	res3 := p.Parse(ua, nil)
+	if res3.Browser.Name == "MUTATED" {
+		t.Errorf("Caller mutation leaked into the cache")
 	}
 }
 
@@ -360,6 +391,9 @@ func TestWindowsVersionMapping(t *testing.T) {
 		{"13.0.0", "11"},
 		{"10.0.0", "10"},
 		{"1.0.0", "10"},
+		{"0.1.0", "7"},
+		{"0.2.0", "8"},
+		{"0.3.0", "8.1"},
 		{"0.0.0", "0.0.0"},
 	}
 
