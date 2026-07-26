@@ -11,7 +11,7 @@ One Go core gives byte-identical results everywhere; choose how you run it:
 | Parse UAs inside a **Go** service | the Go package | [Go Library Usage](#go-library-usage) |
 | Parse from **Java / Node.js / Python** | that language's client | [Client Libraries](#client-libraries) |
 | A **standalone HTTP service** (any language, or a sidecar) | the REST server / Docker image | [REST API Server](#rest-api-server) |
-| Parse **in the browser** | the Node.js client (WASM build) | [Usage (Browser / Bundlers)](./clients/node#usage-browser--bundlers) |
+| Parse **in the browser** (SPA / vanilla JS) | the JavaScript client (WASM build) | [Usage (Browser / Bundlers)](./clients/node#usage-browser--bundlers) |
 
 Fastest taste — run the service and parse a request, no install beyond Docker:
 
@@ -80,7 +80,7 @@ We provide official wrappers for major languages that use the core shared librar
 
 - **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser/clients/go` (the importable client package; the bare module path also resolves)
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
-- **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
+- **[Node.js / Browser](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages) — one package for server-side Node.js (native) and browser/SPA (WASM)
 - **[Java](./clients/java)**: `com.github.Octanium91:ua-parser` (JitPack, GitHub Packages)
 
 ### Support Matrix
