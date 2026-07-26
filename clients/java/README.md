@@ -125,7 +125,10 @@ public class Main {
         UaParser.Config config = new UaParser.Config();
         config.lruCacheSize = 2000;
         config.disableAutoUpdate = false;
-        
+        // Correction layer (hot-updated) — optional overrides:
+        // config.correctionsUrl = "https://example.com/corrections.yaml";
+        // config.disableCorrectionsUpdate = false;
+
         parser.init(config);
 
         // 3. Prepare data
@@ -139,13 +142,51 @@ public class Main {
         // 4. Parse (Returns a typed Result object)
         UaParser.Result result = parser.parse(ua, headers);
 
-        // 5. Use data
-        System.out.println("OS: " + result.os.name + " " + result.os.version);
+        // 5. Use data (Result v1.1 fields included)
+        System.out.println("OS: " + result.os.name + " " + result.os.version + " (" + result.os.platform + ")");
         System.out.println("Browser: " + result.browser.name + " " + result.browser.version);
-        System.out.println("Is Bot: " + result.isBot);
+        System.out.println("Device: " + result.device.vendor + " / " + result.device.formFactor);
+        System.out.println("CPU: " + result.cpu.architecture + " " + result.cpu.bitness + ", frozen UA: " + result.isFrozenUa);
+        if (result.bot != null) {
+            System.out.println("Bot: " + result.bot.name + " (" + result.bot.category + ", " + result.bot.vendor + ")");
+        }
     }
 }
 ```
+
+### Browser signals (optional)
+
+`parse(ua, headers, signals)` accepts browser-side evidence that UA and Client Hints can't provide (Safari/Firefox send no Client Hints):
+
+```java
+UaParser.Signals signals = new UaParser.Signals();
+signals.maxTouchPoints = 5;         // unmasks iPads reporting a desktop (Mac) UA
+signals.webglRenderer = "Apple M2"; // Apple Silicon / Android SoC
+UaParser.Result result = parser.parse(ua, headers, signals);
+```
+
+Priority inside the engine: **Client Hints > signals > UA string**.
+
+### Typed Result fields
+
+`Result` exposes: `browser{name,version,major,type}`, `os{name,version,platform}`, `device{model,vendor,type,formFactor}`, `cpu{architecture,bitness}`, `engine{name,version}`, `category`, `isBot`, `isAiCrawler`, `isFrozenUa`, `bot` (a `BotInfo{name,category,vendor}`, null for humans), and `gpu` (a `GPUInfo{vendor,renderer}`, null unless a WebGL signal was supplied). Full JSON example and field semantics: [root README](../../README.md#example-response).
+
+## Forwarding headers from a real request
+
+For maximum accuracy don't enumerate headers — copy the `User-Agent` plus **every** request header starting with `Sec-CH-` (and `X-Requested-With` if present). Servlet example (same idea for Spring):
+
+```java
+Map<String, String> headers = new HashMap<>();
+for (Enumeration<String> e = request.getHeaderNames(); e.hasMoreElements(); ) {
+    String name = e.nextElement().toLowerCase();
+    if (name.startsWith("sec-ch-") || name.equals("x-requested-with")) {
+        headers.put(name, request.getHeader(name));
+    }
+}
+UaParser.Result result = parser.parse(request.getHeader("User-Agent"), headers);
+```
+
+Pass values raw, quotes included (`"\"Windows\""`). See the [backend forwarding guide](../../README.md#forwarding-headers-from-your-backend) and [Requesting Client Hints](../../README.md#requesting-client-hints) (`Accept-CH`) in the root README.
 
 ## Compilation
 

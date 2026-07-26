@@ -11,7 +11,10 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
   - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64** (glibc and musl artifacts), **windows/amd64**, **macOS (amd64/arm64)**, plus **WebAssembly** builds (WASI reactor and browser js/wasm).
 - **Graceful Degradation (Java & Node.js)**: Smart client architecture that attempts to load the ultra-fast native driver (JNA / koffi), but transparently falls back to a bundled WebAssembly engine if the native library cannot be loaded (e.g., on Alpine Linux).
 - **Client Hints Priority**: Automatically uses `Sec-CH-UA` headers with **highest priority** for precise OS and device detection (e.g., distinguishing Windows 11 from Windows 10 where the UA string might be ambiguous).
-- **Hot-Swap**: Background `regexes.yaml` updates without service interruption, with detailed logging for observability.
+- **Correction Layer**: A declarative override config ([corrections.yaml](./pkg/core/resources/corrections.yaml)) patches known detection gaps (in-app browsers, vehicles, consoles, device vendors) on top of uap-core — embedded at build time and **hot-updated at runtime in every mode**, including the browser WASM build. Design: [docs/correction-layer.md](./docs/correction-layer.md).
+- **Browser Signals**: An optional `signals` block (touch points, `navigator.platform`, WebGL renderer, screen) unmasks what UA and Client Hints cannot — e.g. iPads masquerading as Macs in Safari, which sends no Client Hints at all. The browser WASM client collects them automatically.
+- **Rich Result**: Beyond browser/OS/device/engine — canonical `os.platform`, CPU bitness, `device.form_factor`, `is_frozen_ua`, and a classified `bot` object (`{name, category, vendor}` — training / search / user-fetch / agent / search-crawler / seo / social-preview) with canonical names synthesized even where uap-core yields junk.
+- **Hot-Swap**: Background `regexes.yaml` and `corrections.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
 - **Embedded**: Core regex patterns are bundled into the binary using `go:embed`.
 - **CI/CD**: Fully automated builds and multi-platform distribution (GitHub Packages, GHCR) via **GitHub Actions**.
@@ -110,6 +113,7 @@ import "github.com/Octanium91/ua-parser/clients/go"
 cfg := uaparser.Config{
     DisableAutoUpdate: false,
     LRUCacheSize:      1000,
+    // CorrectionsURL / DisableCorrectionsUpdate also available (correction layer).
 }
 
 parser, _ := uaparser.New(cfg)
@@ -121,11 +125,19 @@ headers := map[string]string{
 }
 
 result := parser.Parse("Mozilla/5.0...", headers)
-fmt.Printf("OS: %s %s\n", result.OS.Name, result.OS.Version)
+fmt.Printf("OS: %s %s (%s)\n", result.OS.Name, result.OS.Version, result.OS.Platform)
 fmt.Printf("Browser: %s (%s)\n", result.Browser.Name, result.Browser.Version)
 fmt.Printf("Engine: %s %s\n", result.Engine.Name, result.Engine.Version)
+fmt.Printf("Device: %s / %s (%s)\n", result.Device.Vendor, result.Device.Model, result.Device.FormFactor)
+fmt.Printf("CPU: %s %s | frozen UA: %v\n", result.CPU.Architecture, result.CPU.Bitness, result.IsFrozenUA)
 fmt.Printf("Category: %s\n", result.Category)
 fmt.Printf("Is Bot: %v (AI: %v)\n", result.IsBot, result.IsAICrawler)
+if result.Bot != nil {
+    fmt.Printf("Bot: %s (%s, %s)\n", result.Bot.Name, result.Bot.Category, result.Bot.Vendor)
+}
+
+// Optional browser signals (Safari/Firefox send no Client Hints):
+//   result = parser.ParseFull(ua, headers, &core.Signals{MaxTouchPoints: 5})
 ```
 
 ## Supported Client Hints Headers
@@ -161,6 +173,76 @@ Critical-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model
 ```
 
 > **Nginx Users:** Standard Nginx configurations typically forward these headers **out-of-the-box**. Explicit configuration is usually not required unless your proxy is configured to strip unknown headers.
+
+### Forwarding headers from your backend
+
+The parser is only as accurate as the headers you hand it. The golden rule for every backend client: **don't enumerate individual headers — copy the `User-Agent` plus every request header whose name starts with `Sec-CH-` into the headers map.** New hints the engine learns in future versions then flow through automatically, with no integrator changes.
+
+- Header names are case-insensitive (the engine normalizes them); pass values **raw, quotes included** (`Sec-CH-UA-Platform: "Windows"` — don't strip the quotes).
+- Also forward **`X-Requested-With`** when present: Android WebView sends the embedding app's package id (`com.tencent.mm` → WeChat) — a precise in-app browser signal consumed by the upcoming correction layer ([design](./docs/correction-layer.md)); harmless to forward today.
+- If you cache parse results on your side, your cache key must include every forwarded header (the built-in LRU cache already handles this internally).
+
+**Go**
+
+```go
+headers := make(map[string]string)
+for name, vals := range r.Header {
+    if lower := strings.ToLower(name); strings.HasPrefix(lower, "sec-ch-") || lower == "x-requested-with" {
+        headers[lower] = vals[0]
+    }
+}
+result := parser.Parse(r.Header.Get("User-Agent"), headers)
+```
+
+**Java (servlet API — same idea for Spring's `@RequestHeader MultiValueMap`)**
+
+```java
+Map<String, String> headers = new HashMap<>();
+for (Enumeration<String> e = request.getHeaderNames(); e.hasMoreElements(); ) {
+    String name = e.nextElement().toLowerCase();
+    if (name.startsWith("sec-ch-") || name.equals("x-requested-with")) {
+        headers.put(name, request.getHeader(name));
+    }
+}
+UaParser.Result result = parser.parse(request.getHeader("User-Agent"), headers);
+```
+
+**Node.js (Express — `req.headers` keys are already lowercase)**
+
+```js
+const headers = Object.fromEntries(
+    Object.entries(req.headers)
+        .filter(([k]) => k.startsWith('sec-ch-') || k === 'x-requested-with')
+);
+const result = parser.parse(req.headers['user-agent'], headers);
+```
+
+**Python (Flask — same idea for Django's `request.headers` / FastAPI's `request.headers`)**
+
+```python
+headers = {
+    k.lower(): v
+    for k, v in request.headers
+    if k.lower().startswith("sec-ch-") or k.lower() == "x-requested-with"
+}
+result = parser.parse(request.headers.get("User-Agent", ""), headers)
+```
+
+**REST server** — same rule, headers go into the `headers` object of the POST body (see [Example Request](#example-request)).
+
+**Browser signals (optional, biggest win for Safari/Firefox traffic)** — Safari and Firefox send no `Sec-CH-UA` headers at all, but the page can still collect evidence the UA string hides. Gather this object on the page and forward it as `signals` in the parse payload (the browser WASM client collects it automatically):
+
+```js
+const signals = {
+    max_touch_points: navigator.maxTouchPoints,        // unmasks iPads posing as Macs
+    platform: navigator.platform,
+    screen: { w: screen.width, h: screen.height, dpr: devicePixelRatio },
+    // Optional, fingerprinting-adjacent — include only if acceptable for your users:
+    // webgl_renderer from WEBGL_debug_renderer_info (Apple Silicon / Android SoC detection)
+};
+```
+
+Priority inside the engine: Client Hints > signals > UA string — signals never override real CH data.
 
 ## REST API Server
 
@@ -199,13 +281,16 @@ docker run -p 8080:8080 ua-parser
 | `UA_CACHE_SIZE` | LRU cache size | `1000` |
 | `UA_UPDATE_URL` | Remote URL for `regexes.yaml` | `https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml` |
 | `UA_UPDATE_INTERVAL` | Background update check interval | `24h` |
+| `UA_CORRECTIONS_URL` | Remote URL for `corrections.yaml` (correction layer) | this repo's `main` branch |
+| `UA_DISABLE_CORRECTIONS_UPDATE` | Disable correction hot-updates (embedded snapshot stays) | `false` |
 
 ### Health Check
 
-The server exposes a `GET` health-check endpoint for liveness/readiness probes, at `/health` by default:
+The server exposes a `GET` health-check endpoint for liveness/readiness probes, at `/health` by default. It also reports the live correction-layer version and rule count for observability:
 
 ```bash
-curl http://localhost:8080/health   # -> {"status":"ok"}
+curl http://localhost:8080/health
+# -> {"status":"ok","corrections":{"version":"2026-07-26.1","rules":15}}
 ```
 
 ### Relocating the endpoints
@@ -232,7 +317,7 @@ Notes: a leading slash is optional (`api` == `/api`); leaving `UA_BASE_PATH` uns
 
 ### Example Request
 
-The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints:
+The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints, and `signals` is an optional block of browser-collected evidence (see [Browser signals](#forwarding-headers-from-your-backend)):
 
 ```bash
 curl -X POST http://localhost:8080/ \
@@ -243,7 +328,8 @@ curl -X POST http://localhost:8080/ \
       "Sec-CH-UA-Platform": "\"Windows\"",
       "Sec-CH-UA-Platform-Version": "\"13.0.0\"",
       "Sec-CH-UA-Full-Version-List": "\"Chromium\";v=\"119.0.6045.105\", \"Google Chrome\";v=\"119.0.6045.105\""
-    }
+    },
+    "signals": { "max_touch_points": 0, "webgl_renderer": "" }
   }'
 ```
 
@@ -260,15 +346,18 @@ curl -X POST http://localhost:8080/ \
   },
   "os": {
     "name": "Windows",
-    "version": "11"
+    "version": "11",
+    "platform": "windows"
   },
   "device": {
     "model": "",
     "vendor": "",
-    "type": "desktop"
+    "type": "desktop",
+    "form_factor": "desktop"
   },
   "cpu": {
-    "architecture": "amd64"
+    "architecture": "amd64",
+    "bitness": "64"
   },
   "engine": {
     "name": "Blink",
@@ -276,7 +365,20 @@ curl -X POST http://localhost:8080/ \
   },
   "category": "desktop",
   "is_bot": false,
-  "is_ai_crawler": false
+  "is_ai_crawler": false,
+  "is_frozen_ua": true
+}
+```
+
+For bots the response additionally carries a classified identity object — canonical name synthesized even where uap-core's generic patterns produce junk (`ChatGPT-User` used to parse as `"com/bot"`):
+
+```json
+{
+  "browser": { "name": "ChatGPT-User", "version": "1.0", "major": "1", "type": "bot" },
+  "category": "bot",
+  "is_bot": true,
+  "is_ai_crawler": true,
+  "bot": { "name": "ChatGPT-User", "category": "user-fetch", "vendor": "OpenAI" }
 }
 ```
 
@@ -286,6 +388,16 @@ The parser includes a dedicated logic to detect common bots and AI-related crawl
 - **General Bots**: Googlebot, Bingbot, YandexBot, etc.
 - **AI Crawlers**: GPTBot, ClaudeBot, PerplexityBot, Google-Extended, and more.
 - **Categorization**: Automatically sets `Category: "bot"` and `Browser.Type: "bot"` for identified automated agents.
+- **Classified identity**: every bot result carries `bot: {name, category, vendor}` — AI agents are tagged `training` / `search` / `user-fetch` / `agent` per the vendor's own documentation (robots-policy and billing decisions need more than a boolean), classic automation as `search-crawler` / `seo` / `monitoring` / `social-preview`.
+
+## Correction Layer
+
+A declarative override config, [pkg/core/resources/corrections.yaml](./pkg/core/resources/corrections.yaml), fixes known detection gaps that the uap-core database cannot express or has not yet fixed upstream: in-app browsers (WeChat, VK, `X-Requested-With` package ids), vehicles (Tesla, Android Automotive), consoles (PS5 OS, Xbox model), Fire TV / Tizen TV, and an Android vendor-from-model prefix table (`SM-*` → Samsung, Xiaomi date codes, `CPH*` → OPPO, …).
+
+- Rules are **matched behind cheap substring gates** (near-zero cost on mainstream traffic, hard cap 64 rules) and applied **after Client Hints** — corrections are terminal, but fill-gap guards ensure genuine CH data is never overwritten.
+- The file is **embedded at build time and hot-swapped at runtime** with full validation: schema check, RE2 compilation, per-rule inline tests executed through the real pipeline before every swap; any failure keeps the last good rules.
+- **Every mode gets live rules**: native builds fetch it on the update tick; the browser WASM build fetches it once at `initUA` (Fetch-backed `net/http`); the WASI fallback engines receive it from their Java/Node hosts via the `updateCorrections` export.
+- Every rule carries its own test corpus and an upstream link; a dead-rule lint in CI forces deleting rules once upstream uap-core catches up. Design details: [docs/correction-layer.md](./docs/correction-layer.md).
 
 ## Shared Library (C-FFI)
 
@@ -302,8 +414,11 @@ These files are the **required drivers** for integrations. Note that Python, Nod
 
 ### Exported Functions:
 - `Init(configJSON)` — Initializes the parser.
-- `Parse(payloadJSON)` — Parses data (returns JSON string).
+- `Parse(payloadJSON)` — Parses data (returns JSON string). The payload accepts `{"ua", "headers", "signals"}`.
+- `UpdateCorrections(yaml)` — Pushes a corrections.yaml payload into the engine (validated; whole-file reject keeps last good). For hosts that manage delivery themselves.
 - `FreeString(ptr)` — Frees memory allocated for strings.
+
+The WASI build additionally exports `updateCorrections(ptr, len)` (host-push — WASI has no sockets), and the browser js/wasm build exposes `globalThis.updateCorrectionsUA(yaml)` plus automatic fetch-at-init of the corrections file.
 
 ## Project Structure
 

@@ -1,0 +1,323 @@
+# Correction layer rule database (docs/correction-layer.md).
+#
+# Embedded at build time, hot-swapped at runtime from this repository's raw
+# URL. Every rule MUST carry: an id, a ua_contains/ua_contains_any prefilter
+# anchor, at least one inline test, and (unless permanent) an upstream link.
+# Rules marked permanent encode THIS project's schema (browser.type=inapp,
+# categories, vendor table) and never graduate to uap-core; all others are
+# temporary patches that the dead-rule lint retires once upstream catches up.
+schema_version: 1
+version: "2026-07-26.1"
+
+rules:
+  - id: wechat-inapp-browser
+    description: >
+      WeChat's Android in-app browser parses as generic "Chrome Mobile
+      WebView": uap-core's MicroMessenger pattern is ordered after the WebView
+      pattern (upstream placement bug).
+    upstream: "https://github.com/ua-parser/uap-core/issues/479"
+    match:
+      ua_contains: "micromessenger/"
+      ua_regex: '(?i)micromessenger/(\d+(?:\.\d+){0,3})'
+    set:
+      browser_name: "WeChat"
+      browser_version: "$1"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 13; 22081212C Build/TKQ1.220829.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36 XWEB/1160065 MMWEBSDK/20231202 MMWEBID/1234 MicroMessenger/8.0.47.2560(0x28002F35) WeChat/arm64"
+        expect:
+          browser.name: "WeChat"
+          browser.version: "8.0.47.2560"
+          browser.type: "inapp"
+          device.type: "mobile"
+          device.vendor: "Xiaomi"
+
+  - id: tesla-vehicle
+    description: >
+      Tesla's in-car browser appends "Tesla/<firmware>" to a desktop Chromium
+      UA and parses as a Linux desktop.
+    upstream: "absent upstream (only the legacy QtCarBrowser pattern exists)"
+    match:
+      ua_contains: "tesla/"
+      ua_regex: '(?i)\btesla/(20\d{2}\.[\w.\-]+)'
+    set:
+      device_vendor: "Tesla"
+      device_type: "automotive"
+    tests:
+      - ua: "Mozilla/5.0 (X11; GNU/Linux) AppleWebKit/537.36 (KHTML, like Gecko) Chromium/79.0.3945.130 Chrome/79.0.3945.130 Safari/537.36 Tesla/2024.14.6-e3ban39a4d13d"
+        expect:
+          device.vendor: "Tesla"
+          device.type: "automotive"
+          category: "automotive"
+
+  - id: playstation-os
+    description: >
+      PlayStation consoles report os "Other"; the UA carries the generation
+      right in the "PlayStation N/firmware" token.
+    upstream: "https://github.com/ua-parser/uap-core/issues/276"
+    match:
+      ua_contains: "playstation "
+      ua_regex: '(?i)playstation (\d+)/[\d.]+'
+    set:
+      os_name: "PlayStation"
+      os_version: "$1"
+    tests:
+      - ua: "Mozilla/5.0 (PlayStation; PlayStation 5/8.40) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        expect:
+          os.name: "PlayStation"
+          os.version: "5"
+          device.model: "PlayStation 5"
+          category: "console"
+
+  - id: xbox-device
+    description: >
+      Xbox Edge UAs ("Xbox; Xbox One)") yield an empty device vendor/model.
+      Note the UA token is frozen at "One" even on Series X — approximate.
+    upstream: "only ancient MSIE/XBMC-era patterns exist upstream"
+    match:
+      ua_contains: "xbox; xbox"
+      ua_regex: '(?i)xbox;\s*xbox ([a-z0-9 ]+?)\)'
+    set:
+      device_vendor: "Microsoft"
+      device_model: "Xbox $1"
+    tests:
+      - ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Xbox; Xbox One) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+        expect:
+          device.vendor: "Microsoft"
+          device.model: "Xbox One"
+          device.type: "console"
+          os.name: "Windows"
+
+  - id: vk-inapp
+    description: VK's Android in-app browser (VKAndroidApp token), absent upstream.
+    upstream: "absent upstream"
+    match:
+      ua_contains: "vkandroidapp/"
+      ua_regex: '(?i)vkandroidapp/([0-9][\w.\-]*)'
+    set:
+      browser_name: "VK"
+      browser_version: "$1"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 13; 22081212C Build/TKQ1.220829.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36 VKAndroidApp/8.44-14883 (Android 13; SDK 33; arm64-v8a; Xiaomi 22081212C; ru; 2400x1080)"
+        expect:
+          browser.name: "VK"
+          browser.version: "8.44-14883"
+          browser.type: "inapp"
+
+  - id: inapp-type-flags
+    description: >
+      browser.type=inapp for in-app browsers uap-core already names correctly
+      (the type field is this project's schema — uap-core has no such field).
+    permanent: true
+    match:
+      ua_contains_any:
+        - "fban"
+        - "fbav"
+        - "instagram"
+        - "snapchat"
+        - " line/"
+        - "telegram"
+        - "pinterest/"
+        - "weibo"
+        - "twitter"
+      browser_name:
+        - "Facebook"
+        - "Facebook Messenger"
+        - "Instagram"
+        - "Snapchat"
+        - "Line"
+        - "LINE"
+        - "Telegram"
+        - "Pinterest"
+        - "Weibo"
+        - "Twitter"
+    set:
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/21E236 [FBAN/FBIOS;FBAV/460.0.0.31.107;FBBV/593707751;FBDV/iPhone15,3;FBMD/iPhone;FBSN/iOS;FBSV/17.4.1;FBSS/3;FBID/phone;FBLC/en_US;FBOP/5]"
+        expect:
+          browser.name: "Facebook"
+          browser.type: "inapp"
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36 Instagram 334.0.0.42.95 Android (34/14; 480dpi; 1080x2316; samsung; SM-S918B; dm3q; qcom; en_US; 590322609)"
+        expect:
+          browser.name: "Instagram"
+          browser.type: "inapp"
+          device.vendor: "Samsung"
+
+  - id: samsung-tizen-tv-browser
+    description: >
+      Samsung Tizen TVs embed a bare "<chromium-version>/<tizen-version> TV
+      Safari" token; both uap-core and ua-parser-js emit junk browser data.
+    upstream: "absent upstream"
+    match:
+      ua_contains: [" tv safari", "tizen"]
+      ua_regex: '(?i)gecko\)\s+([\d.]{5,})/[\d.]+ tv safari'
+    set:
+      browser_name: "Samsung TV Browser"
+      browser_version: "$1"
+    tests:
+      - ua: "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.5) AppleWebKit/537.36 (KHTML, like Gecko) 85.0.4183.93/6.5 TV Safari/537.36"
+        expect:
+          browser.name: "Samsung TV Browser"
+          browser.version: "85.0.4183.93"
+          device.type: "tv"
+          category: "tv"
+
+  - id: android-automotive
+    description: Android Automotive OS head units are cars, not tablets.
+    permanent: true
+    match:
+      ua_contains: "android automotive"
+    set:
+      device_type: "automotive"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android Automotive OS 13; MBUX Build/AA13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+        expect:
+          device.type: "automotive"
+          category: "automotive"
+
+  - id: fire-tv
+    description: >
+      Amazon Fire TV devices (AFT* model codes, per Amazon's public device
+      spec list) carry a phone-shaped Android WebView UA.
+    upstream: "absent upstream"
+    match:
+      ua_contains: ["android", "aft"]
+      ua_regex: '(?i);\s*(aft[a-z0-9]{1,6})\s+build/'
+    set:
+      device_vendor: "Amazon"
+      device_model: "$1"
+      device_type: "tv"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 9; AFTKA Build/PS7233; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/88.0.4324.152 Mobile Safari/537.36"
+        expect:
+          device.vendor: "Amazon"
+          device.model: "AFTKA"
+          device.type: "tv"
+          category: "tv"
+
+  # --- X-Requested-With package-id rules -----------------------------------
+  # Android WebView sends the embedding app's package id in X-Requested-With
+  # (Google's removal is suspended as of 2026). Ground truth for in-app
+  # detection when the backend forwards the header.
+
+  - id: xrw-wechat
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: "com.tencent.mm"
+    set:
+      browser_name: "WeChat"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 13; 22081212C Build/TKQ1.220829.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "com.tencent.mm"
+        expect:
+          browser.name: "WeChat"
+          browser.type: "inapp"
+
+  - id: xrw-instagram
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: "com.instagram.android"
+    set:
+      browser_name: "Instagram"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "com.instagram.android"
+        expect:
+          browser.name: "Instagram"
+          browser.type: "inapp"
+
+  - id: xrw-facebook
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: ["com.facebook.katana", "com.facebook.orca"]
+    set:
+      browser_name: "Facebook"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "com.facebook.katana"
+        expect:
+          browser.name: "Facebook"
+          browser.type: "inapp"
+
+  - id: xrw-telegram
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: "org.telegram.messenger"
+    set:
+      browser_name: "Telegram"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "org.telegram.messenger"
+        expect:
+          browser.name: "Telegram"
+          browser.type: "inapp"
+
+  - id: xrw-tiktok
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: ["com.zhiliaoapp.musically", "com.ss.android.ugc.trill"]
+    set:
+      browser_name: "TikTok"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "com.zhiliaoapp.musically"
+        expect:
+          browser.name: "TikTok"
+          browser.type: "inapp"
+
+  - id: xrw-vk
+    permanent: true
+    match:
+      ua_contains: "android"
+      x_requested_with: "com.vkontakte.android"
+    set:
+      browser_name: "VK"
+      browser_type: "inapp"
+    tests:
+      - ua: "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/126.0.0.0 Mobile Safari/537.36"
+        headers:
+          X-Requested-With: "com.vkontakte.android"
+        expect:
+          browser.name: "VK"
+          browser.type: "inapp"
+
+# Android device vendor from model codes — fill-gap only (applies when
+# uap-core left the vendor empty or Generic*). Curated top prefixes, hard cap
+# 24 rows; per-model granularity is out of scope by design.
+vendor_prefixes:
+  - { model_regex: '(?i)^(SM|GT)-', vendor: "Samsung" }
+  - { model_regex: '(?i)^Pixel\b', vendor: "Google" }
+  - { model_regex: '(?i)^(Redmi|POCO|Mi\s|M2\d{3})', vendor: "Xiaomi" }
+  - { model_regex: '(?i)^2[1-6]\d{2}[0-9A-Z]{5,8}$', vendor: "Xiaomi" }
+  - { model_regex: '(?i)^CPH\d{4}', vendor: "OPPO" }
+  - { model_regex: '(?i)^((KB|LE|NE|PJ)2\d{3}|ONEPLUS)', vendor: "OnePlus" }
+  - { model_regex: '(?i)^RMX\d{4}', vendor: "Realme" }
+  - { model_regex: '(?i)^(V2\d{3}[A-Z]?$|vivo)', vendor: "Vivo" }
+  - { model_regex: '(?i)^(moto|XT\d{4})', vendor: "Motorola" }
+  - { model_regex: '(?i)^(ANA|VOG|ELE|ELS|NOH|LYA|EML|CLT|MAR|POT|STK|JAD|ALP|PRA|YAL)-', vendor: "Huawei" }
+  - { model_regex: '(?i)^HONOR', vendor: "Honor" }
+  - { model_regex: '(?i)^(TA-\d{4}|Nokia)', vendor: "Nokia" }
+  - { model_regex: '(?i)^Infinix', vendor: "Infinix" }
+  - { model_regex: '(?i)^TECNO', vendor: "Tecno" }
+  - { model_regex: '(?i)^itel\b', vendor: "itel" }
+  - { model_regex: '(?i)^(Lenovo|TB-?\d{3})', vendor: "Lenovo" }
+  - { model_regex: '(?i)^XQ-[A-Z]{2}\d{2}', vendor: "Sony" }
+  - { model_regex: '(?i)^KF[A-Z]{2,6}$', vendor: "Amazon" }
+  - { model_regex: '(?i)^AFT[A-Z0-9]{1,6}$', vendor: "Amazon" }

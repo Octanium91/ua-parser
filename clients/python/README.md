@@ -47,14 +47,54 @@ headers = {
 
 result = parser.parse(ua, headers)
 
-print(f"OS: {result['os']['name']} {result['os']['version']}")
+print(f"OS: {result['os']['name']} {result['os']['version']} ({result['os']['platform']})")
 print(f"Browser: {result['browser']['name']} {result['browser']['version']}")
+print(f"Device: {result['device']['vendor']} / {result['device']['form_factor']}")
+print(f"CPU: {result['cpu']['architecture']} {result['cpu']['bitness']}, frozen UA: {result['is_frozen_ua']}")
+if result.get("bot"):
+    print(f"Bot: {result['bot']['name']} ({result['bot']['category']}, {result['bot']['vendor']})")
 ```
+
+### Browser signals (optional)
+
+`parse(ua, headers, signals)` accepts a dict of browser-side evidence that UA and Client Hints can't provide (Safari/Firefox send no Client Hints):
+
+```python
+result = parser.parse(ua, headers, signals={
+    "max_touch_points": 5,        # unmasks iPads reporting a desktop (Mac) UA
+    "webgl_renderer": "Apple M2", # Apple Silicon / Android SoC
+    "screen": {"w": 1180, "h": 820, "dpr": 2},
+})
+```
+
+Priority inside the engine: **Client Hints > signals > UA string**.
+
+The parse result is a plain `dict`, so every field — including the Result v1.1
+additions `os.platform`, `device.form_factor`, `cpu.bitness`, `is_frozen_ua`,
+`bot` (`{name, category, vendor}`, absent/`None` for humans) and `gpu` — is
+available directly. Full field semantics: [root README](../../README.md#example-response).
+
+## Forwarding headers from a real request
+
+For maximum accuracy don't enumerate headers — copy the `User-Agent` plus **every** request header starting with `Sec-CH-` (and `X-Requested-With` if present). Flask example (same idea for Django/FastAPI):
+
+```python
+headers = {
+    k.lower(): v
+    for k, v in request.headers
+    if k.lower().startswith("sec-ch-") or k.lower() == "x-requested-with"
+}
+result = parser.parse(request.headers.get("User-Agent", ""), headers)
+```
+
+Pass values raw, quotes included (`'"Windows"'`). See the [backend forwarding guide](../../README.md#forwarding-headers-from-your-backend) and [Requesting Client Hints](../../README.md#requesting-client-hints) (`Accept-CH`) in the root README.
 
 ## Configuration
 
 The `init()` method accepts a dictionary:
-- `disable_auto_update` (bool): If true, background regex updates are disabled.
+- `disable_auto_update` (bool): Master switch — if true, no background fetching (regexes or corrections).
 - `update_url` (string): Custom URL for regex updates.
 - `update_interval` (string): Update interval (e.g., "24h").
 - `lru_cache_size` (int): Number of entries to keep in the LRU cache.
+- `corrections_url` (string): Custom URL for the hot-updated [correction layer](../../README.md#correction-layer) (`corrections.yaml`).
+- `disable_corrections_update` (bool): Suppress only correction updates while regex updates continue (the embedded snapshot still applies).

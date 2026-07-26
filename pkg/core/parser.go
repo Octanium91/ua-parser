@@ -22,93 +22,135 @@ import (
 //go:embed resources/regexes.yaml
 var defaultRegexes []byte
 
-// aiBots lists lowercase UA substrings of known AI-related agents (training
-// crawlers, AI-search indexers, and on-demand user fetchers). Sourced from
-// vendor docs and the ai-robots-txt project; keep vendor-grouped for reviewable
-// diffs. Tags: training | search | user-fetch | agent | other.
-var aiBots = []string{
+// botIdentity describes a known automated agent: the lowercase UA substring
+// that identifies it, the operating vendor, and a category. AI categories:
+// training | search | user-fetch | agent | other; classic categories:
+// search-crawler | seo | monitoring | social-preview.
+type botIdentity struct {
+	token    string
+	vendor   string
+	category string
+}
+
+// aiBots lists known AI-related agents (training crawlers, AI-search indexers,
+// and on-demand user fetchers). Sourced from vendor docs and the ai-robots-txt
+// project; keep vendor-grouped for reviewable diffs.
+var aiBots = []botIdentity{
 	// OpenAI — https://developers.openai.com/api/docs/bots
-	"gptbot",        // training
-	"oai-searchbot", // search (ChatGPT search)
-	"oai-adsbot",    // other: ads landing-page QA
-	"chatgpt-user",  // user-fetch (also agent-mode fetches)
+	{"gptbot", "OpenAI", "training"},
+	{"oai-searchbot", "OpenAI", "search"}, // ChatGPT search
+	{"oai-adsbot", "OpenAI", "other"},     // ads landing-page QA
+	{"chatgpt-user", "OpenAI", "user-fetch"},
 
 	// Anthropic — https://support.claude.com/en/articles/8896518
-	"claudebot",        // training
-	"claude-user",      // user-fetch
-	"claude-searchbot", // search
-	"claude-web",       // legacy pre-2024 crawler
-	"anthropic-ai",     // legacy, undocumented
+	{"claudebot", "Anthropic", "training"},
+	{"claude-user", "Anthropic", "user-fetch"},
+	{"claude-searchbot", "Anthropic", "search"},
+	{"claude-web", "Anthropic", "other"},   // legacy pre-2024 crawler
+	{"anthropic-ai", "Anthropic", "other"}, // legacy, undocumented
 
 	// Google — https://developers.google.com/search/docs/crawling-indexing/google-common-crawlers
-	"googleother",           // training/R&D (covers GoogleOther-Image/-Video)
-	"google-cloudvertexbot", // Vertex AI site-owner-requested crawls
-	"google-agent",          // agent: Google-hosted AI agents
-	"googleagent-",          // agent: legacy GoogleAgent-Mariner / -URLContext
-	"gemini-deep-research",  // user-fetch: Gemini Deep Research
-	"google-gemininotebook", // user-fetch: NotebookLM
-	"google-notebooklm",     // user-fetch: NotebookLM legacy token
+	{"googleother", "Google", "training"},        // covers GoogleOther-Image/-Video
+	{"google-cloudvertexbot", "Google", "other"}, // Vertex AI site-owner-requested crawls
+	{"google-agent", "Google", "agent"},          // Google-hosted AI agents
+	{"googleagent-", "Google", "agent"},          // legacy GoogleAgent-Mariner / -URLContext
+	{"gemini-deep-research", "Google", "user-fetch"},
+	{"google-gemininotebook", "Google", "user-fetch"}, // NotebookLM
+	{"google-notebooklm", "Google", "user-fetch"},     // NotebookLM legacy token
 
 	// Meta — https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
-	"meta-externalagent",   // training
-	"meta-externalfetcher", // user-fetch
-	"meta-webindexer",      // search: Meta AI search index
-	"facebookbot",          // legacy
+	{"meta-externalagent", "Meta", "training"},
+	{"meta-externalfetcher", "Meta", "user-fetch"},
+	{"meta-webindexer", "Meta", "search"}, // Meta AI search index
+	{"facebookbot", "Meta", "other"},      // legacy
 
 	// Perplexity — https://docs.perplexity.ai/guides/bots
-	"perplexitybot",   // search
-	"perplexity-user", // user-fetch
+	{"perplexitybot", "Perplexity", "search"},
+	{"perplexity-user", "Perplexity", "user-fetch"},
 
 	// Apple — https://support.apple.com/en-us/119829
-	"applebot-extended", // training (Apple Intelligence opt-out agent)
+	{"applebot-extended", "Apple", "training"}, // Apple Intelligence opt-out agent
 
 	// Amazon — https://developer.amazon.com/en/amazonbot
-	"amazonbot",      // training/service improvement
-	"amzn-searchbot", // search
-	"amzn-user",      // user-fetch (Alexa)
-	"bedrockbot",     // AWS Bedrock web-crawler data source
-	"novaact",        // agent: Amazon Nova Act
+	{"amazonbot", "Amazon", "training"}, // training/service improvement
+	{"amzn-searchbot", "Amazon", "search"},
+	{"amzn-user", "Amazon", "user-fetch"}, // Alexa
+	{"bedrockbot", "Amazon", "training"},  // AWS Bedrock web-crawler data source
+	{"novaact", "Amazon", "agent"},        // Amazon Nova Act
 
 	// ByteDance (community-verified)
-	"bytespider",   // training
-	"tiktokspider", // training
+	{"bytespider", "ByteDance", "training"},
+	{"tiktokspider", "ByteDance", "training"},
 
 	// Common Crawl
-	"ccbot", // training (open corpus widely used for LLMs)
+	{"ccbot", "Common Crawl", "training"}, // open corpus widely used for LLMs
 
 	// Cohere
-	"cohere-training-data-crawler", // training
-	"cohere-ai",                    // legacy user-fetch
+	{"cohere-training-data-crawler", "Cohere", "training"},
+	{"cohere-ai", "Cohere", "user-fetch"}, // legacy
 
 	// Mistral — https://docs.mistral.ai/robots
-	"mistralai-user",  // user-fetch (Le Chat)
-	"mistralai-index", // search
+	{"mistralai-user", "Mistral", "user-fetch"}, // Le Chat
+	{"mistralai-index", "Mistral", "search"},
 
 	// DuckDuckGo — https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot/
-	"duckassistbot", // user-fetch: DuckAssist answers
+	{"duckassistbot", "DuckDuckGo", "user-fetch"}, // DuckAssist answers
 
 	// Allen Institute for AI — https://allenai.org/crawler
-	"ai2bot", // training (covers Ai2Bot-Dolma)
+	{"ai2bot", "Allen Institute for AI", "training"}, // covers Ai2Bot-Dolma
 
 	// Huawei
-	"pangubot", // training (PanGu LLM)
+	{"pangubot", "Huawei", "training"}, // PanGu LLM
 
 	// Webz.io (ex-Omgili)
-	"webzio-extended", // training (crawl data sold for LLM training)
-	"omgili",          // training; also covers legacy "omgilibot"
+	{"webzio-extended", "Webz.io", "training"}, // crawl data sold for LLM training
+	{"omgili", "Webz.io", "training"},          // also covers legacy "omgilibot"
 
 	// Yandex
-	"yandexadditional", // training (YandexGPT; covers YandexAdditionalBot)
+	{"yandexadditional", "Yandex", "training"}, // YandexGPT; covers YandexAdditionalBot
 
 	// Independent AI data collectors / assistants
-	"diffbot",         // AI-powered extraction/knowledge graph
-	"imagesiftbot",    // training: image scraping (Hive)
-	"timpibot",        // training (Timpi)
-	"youbot",          // search+training (You.com)
-	"deepseekbot",     // training (community-reported)
-	"kimi-user",       // user-fetch (Moonshot Kimi)
-	"manus-user",      // agent (Manus)
-	"semrushbot-ocob", // Semrush ContentShake AI
+	{"diffbot", "Diffbot", "other"}, // AI-powered extraction/knowledge graph
+	{"imagesiftbot", "Hive", "training"},
+	{"timpibot", "Timpi", "training"},
+	{"youbot", "You.com", "search"},
+	{"deepseekbot", "DeepSeek", "training"}, // community-reported
+	{"kimi-user", "Moonshot", "user-fetch"},
+	{"manus-user", "Manus", "agent"},
+	{"semrushbot-ocob", "Semrush", "other"}, // Semrush ContentShake AI
+}
+
+// classicBots classifies well-known non-AI automation for the bot object.
+// Checked only when no aiBots token matched (so semrushbot-ocob keeps its AI
+// identity while plain semrushbot classifies as seo).
+var classicBots = []botIdentity{
+	{"googlebot", "Google", "search-crawler"},
+	{"bingbot", "Microsoft", "search-crawler"},
+	{"yandexbot", "Yandex", "search-crawler"},
+	{"duckduckbot", "DuckDuckGo", "search-crawler"},
+	{"baiduspider", "Baidu", "search-crawler"},
+	{"applebot", "Apple", "search-crawler"},
+	{"petalbot", "Huawei", "search-crawler"},
+	{"seznambot", "Seznam", "search-crawler"},
+
+	{"ahrefsbot", "Ahrefs", "seo"},
+	{"semrushbot", "Semrush", "seo"},
+	{"mj12bot", "Majestic", "seo"},
+	{"dotbot", "Moz", "seo"},
+	{"rogerbot", "Moz", "seo"},
+	{"screaming frog", "Screaming Frog", "seo"},
+
+	{"uptimerobot", "UptimeRobot", "monitoring"},
+	{"pingdom", "Pingdom", "monitoring"},
+	{"statuscake", "StatusCake", "monitoring"},
+
+	{"facebookexternalhit", "Meta", "social-preview"},
+	{"twitterbot", "X", "social-preview"},
+	{"slackbot", "Slack", "social-preview"},
+	{"discordbot", "Discord", "social-preview"},
+	{"telegrambot", "Telegram", "social-preview"},
+	{"whatsapp", "Meta", "social-preview"},
+	{"linkedinbot", "LinkedIn", "social-preview"},
 }
 
 // botFalsePositiveTokens are real product names that contain a "bot"-like
@@ -116,9 +158,10 @@ var aiBots = []string{
 // (mirrors uap-core's own "not CUBOT" guard).
 var botFalsePositiveTokens = []string{"cubot"}
 
-// cacheKeyHeaders is the canonical list of Client Hints headers consumed by
-// applyClientHints. Every consumed header MUST be part of the cache key,
-// otherwise requests differing only in that header would collide in the cache.
+// cacheKeyHeaders is the canonical list of headers consumed by the pipeline
+// (applyClientHints + the correction layer's x_requested_with match). Every
+// consumed header MUST be part of the cache key, otherwise requests differing
+// only in that header would collide in the cache.
 var cacheKeyHeaders = []string{
 	"sec-ch-ua",
 	"sec-ch-ua-mobile",
@@ -129,6 +172,7 @@ var cacheKeyHeaders = []string{
 	"sec-ch-ua-bitness",
 	"sec-ch-ua-full-version-list",
 	"sec-ch-ua-form-factors",
+	"x-requested-with",
 }
 
 type Parser struct {
@@ -138,12 +182,18 @@ type Parser struct {
 	config Config
 	ctx    context.Context
 	cancel context.CancelFunc
-	// gen increments on every regex hot-swap; Parse skips caching results that
-	// were computed against a superseded database (see updateRegexes).
+	// gen increments on every resource hot-swap (regexes or corrections);
+	// Parse skips caching results that were computed against a superseded
+	// database (see updateRegexes / ApplyCorrectionsYAML).
 	gen atomic.Uint64
-	// lastETag is the ETag of the last downloaded regexes.yaml; accessed only
-	// from the single updater goroutine.
-	lastETag string
+	// corrections is the compiled correction-layer rule set (immutable once
+	// built; swapped atomically so Parse never takes a lock for it).
+	corrections atomic.Pointer[compiledCorrections]
+	// lastETag / lastCorrectionsETag are the ETags of the last downloaded
+	// regexes.yaml / corrections.yaml; accessed only from the single updater
+	// goroutine.
+	lastETag            string
+	lastCorrectionsETag string
 }
 
 func New(cfg Config) (*Parser, error) {
@@ -155,6 +205,13 @@ func New(cfg Config) (*Parser, error) {
 	uap, err := uaparser.New(uaparser.WithRegexDefinitions(def))
 	if err != nil {
 		return nil, err
+	}
+
+	// The embedded corrections file is CI-validated; a compile failure here is
+	// a build-time bug, same posture as the embedded regexes above.
+	corrections, err := compileCorrections(defaultCorrections)
+	if err != nil {
+		return nil, fmt.Errorf("embedded corrections: %w", err)
 	}
 
 	var cache *lru.Cache[string, *Result]
@@ -178,7 +235,11 @@ func New(cfg Config) (*Parser, error) {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+	p.corrections.Store(corrections)
 
+	// DisableAutoUpdate is the master network switch: when set, no background
+	// fetching happens at all. DisableCorrectionsUpdate is a sub-switch that
+	// suppresses only corrections while regex auto-update still runs.
 	if !cfg.DisableAutoUpdate {
 		go p.startUpdater()
 	}
@@ -191,23 +252,54 @@ func (p *Parser) Close() {
 }
 
 func (p *Parser) Parse(ua string, headers map[string]string) *Result {
-	// Normalize headers once
-	normalizedHeaders := make(map[string]string, len(headers))
-	for k, v := range headers {
-		normalizedHeaders[strings.ToLower(k)] = v
-	}
+	return p.ParseFull(ua, headers, nil)
+}
+
+// ParseFull is Parse plus an optional browser-signals block (see Signals).
+func (p *Parser) ParseFull(ua string, headers map[string]string, signals *Signals) *Result {
+	normalizedHeaders := normalizeHeaders(headers)
 
 	cacheKey := ""
 	if p.cache != nil {
-		cacheKey = buildCacheKey(ua, normalizedHeaders)
+		cacheKey = buildCacheKey(ua, normalizedHeaders, signals)
 		if res, ok := p.cache.Get(cacheKey); ok {
-			cp := *res // copy-on-return: callers must never share the cached struct
-			return &cp
+			// copy-on-return: callers must never share the cached struct
+			return copyResult(res)
 		}
 	}
 
 	gen := p.gen.Load()
 
+	res := p.computeResultFull(ua, normalizedHeaders, signals, p.corrections.Load())
+
+	// Skip caching when the regex DB or the correction set was hot-swapped
+	// mid-parse: the result was computed against the old resources and must
+	// not outlive the purge.
+	if p.cache != nil && p.gen.Load() == gen {
+		p.cache.Add(cacheKey, res)
+	}
+
+	return copyResult(res)
+}
+
+// normalizeHeaders lowercases header names once per parse.
+func normalizeHeaders(headers map[string]string) map[string]string {
+	normalized := make(map[string]string, len(headers))
+	for k, v := range headers {
+		normalized[strings.ToLower(k)] = v
+	}
+	return normalized
+}
+
+// computeResult runs the full detection pipeline against an explicit
+// correction set: uap-core regexes → inference → Client Hints → signals →
+// corrections (terminal) → category. Cache-free, so the corrections
+// self-test can run candidate rule sets through it without polluting state.
+func (p *Parser) computeResult(ua string, normalizedHeaders map[string]string, cc *compiledCorrections) *Result {
+	return p.computeResultFull(ua, normalizedHeaders, nil, cc)
+}
+
+func (p *Parser) computeResultFull(ua string, normalizedHeaders map[string]string, signals *Signals, cc *compiledCorrections) *Result {
 	p.mu.RLock()
 	client := p.uap.Parse(ua)
 	p.mu.RUnlock()
@@ -231,11 +323,23 @@ func (p *Parser) Parse(ua string, headers map[string]string) *Result {
 		},
 	}
 
+	uaLower := strings.ToLower(ua)
+
 	// Infer additional info
-	p.inferInfo(res)
+	p.inferInfo(res, uaLower)
 
 	// Apply Client Hints (overrides) using already-normalized headers
 	p.applyClientHints(res, normalizedHeaders)
+
+	// Browser-side signals: weaker than Client Hints, stronger than a frozen
+	// UA string. Runs after CH so genuine CH data is never overridden.
+	applySignals(res, uaLower, normalizedHeaders, signals)
+
+	// Correction layer: terminal overrides for known detection gaps. Runs
+	// after Client Hints (rules may match on the final CH-corrected state and
+	// must survive CH brand rewrites, e.g. in-app browsers inside a WebView);
+	// before the category switch so overridden device types feed it.
+	categoryOverride := applyCorrections(res, ua, uaLower, normalizedHeaders, cc)
 
 	// Post-process category
 	switch {
@@ -250,28 +354,114 @@ func (p *Parser) Parse(ua string, headers map[string]string) *Result {
 	default:
 		res.Category = "desktop"
 	}
-
-	// Skip caching when the regex DB was hot-swapped mid-parse: the result was
-	// computed against the old database and must not outlive the purge.
-	if p.cache != nil && p.gen.Load() == gen {
-		p.cache.Add(cacheKey, res)
+	if categoryOverride != "" {
+		res.Category = categoryOverride
 	}
 
-	cp := *res // copy-on-return (Result contains only value types)
+	// Derived fields computed from the FINAL state (corrections included).
+	res.OS.Platform = platformOf(res.OS.Name)
+	if res.Device.FormFactor == "" && !res.IsBot {
+		res.Device.FormFactor = formFactorFromType(res.Device.Type)
+	}
+	res.IsFrozenUA = detectFrozenUA(uaLower)
+	if res.Bot != nil {
+		// Keep the bot object in sync when a correction renamed the browser.
+		res.Bot.Name = res.Browser.Name
+	}
+
+	return res
+}
+
+// copyResult returns an independent copy: Result contains two pointer fields
+// (Bot, GPU) that must not be shared between the cache and callers.
+func copyResult(res *Result) *Result {
+	cp := *res
+	if res.Bot != nil {
+		b := *res.Bot
+		cp.Bot = &b
+	}
+	if res.GPU != nil {
+		g := *res.GPU
+		cp.GPU = &g
+	}
 	return &cp
 }
 
-// buildCacheKey joins the UA with every consumed CH header, separated by a byte
-// that is illegal inside header values, so crafted values cannot alias keys.
-func buildCacheKey(ua string, headers map[string]string) string {
+// buildCacheKey joins the UA with every consumed CH header and every consumed
+// signal field. Each field is length-prefixed ("<len>:<value>") so the
+// encoding is injective regardless of field contents — values arrive from
+// JSON/FFI and may contain any byte (including NUL), so a plain separator
+// could otherwise let one field's bytes masquerade as another's boundary.
+// deviceMemory/hardwareConcurrency are NOT consumed by the pipeline and are
+// deliberately excluded.
+func buildCacheKey(ua string, headers map[string]string, signals *Signals) string {
 	var b strings.Builder
-	b.Grow(len(ua) + 160)
-	b.WriteString(ua)
+	b.Grow(len(ua) + 220)
+	writeField := func(s string) {
+		b.WriteString(strconv.Itoa(len(s)))
+		b.WriteByte(':')
+		b.WriteString(s)
+	}
+	writeField(ua)
 	for _, k := range cacheKeyHeaders {
-		b.WriteByte(0)
-		b.WriteString(headers[k])
+		writeField(headers[k])
+	}
+	if signals != nil {
+		b.WriteByte('S') // distinguishes "no signals" from all-zero signals
+		writeField(strconv.Itoa(signals.MaxTouchPoints))
+		writeField(signals.Platform)
+		writeField(signals.WebGLVendor)
+		writeField(signals.WebGLRenderer)
+		if signals.Screen != nil {
+			writeField(strconv.Itoa(signals.Screen.W))
+			writeField(strconv.Itoa(signals.Screen.H))
+		}
 	}
 	return b.String()
+}
+
+// applySignals folds browser-side evidence into the result. Every rule here
+// is a verified, single-purpose inference — no scoring, no guessing:
+//
+//  1. iPad unmask: iPadOS Safari in desktop mode masquerades as an Intel Mac,
+//     but real Macs report ≤1 touch point. Safari sends no Client Hints, so
+//     this signal is the only correction path.
+//  2. Apple Silicon: the frozen Mac UA always claims Intel; a WebGL renderer
+//     naming an Apple M-series GPU proves arm64. Chromium-only fallback,
+//     honored only when Sec-CH-UA-Arch did not already answer.
+//  3. GPU passthrough: expose the renderer for consumers (Android SoC tier).
+//  4. Tablet assist: a Linux-desktop UA with a multi-touch screen is a
+//     desktop-mode Android tablet, not a desktop (Windows is excluded —
+//     touch laptops are still desktops).
+func applySignals(res *Result, uaLower string, headers map[string]string, signals *Signals) {
+	if signals == nil {
+		return
+	}
+
+	if signals.WebGLRenderer != "" || signals.WebGLVendor != "" {
+		res.GPU = &GPUInfo{Vendor: signals.WebGLVendor, Renderer: signals.WebGLRenderer}
+	}
+
+	if signals.MaxTouchPoints > 1 && strings.Contains(uaLower, "macintosh") {
+		res.OS.Name = "iPadOS"
+		res.OS.Version = "" // the Mac UA token carries no real iPadOS version
+		res.Device.Vendor = "Apple"
+		res.Device.Model = "iPad"
+		res.Device.Type = "tablet"
+	} else if signals.MaxTouchPoints > 1 && res.Device.Type == "desktop" &&
+		platformOf(res.OS.Name) == "linux" {
+		res.Device.Type = "tablet"
+	}
+
+	// Gate on the PARSED OS family, not a raw-UA substring: iPhone/iPad UAs
+	// also contain "like Mac OS X", and this rule is only meaningful for a
+	// desktop Mac whose frozen UA hides Apple Silicon. CH arch, when present,
+	// already answered and wins.
+	if res.OS.Name == "Mac OS X" && headers["sec-ch-ua-arch"] == "" &&
+		strings.Contains(signals.WebGLRenderer, "Apple M") {
+		res.CPU.Architecture = "arm64"
+		res.CPU.Bitness = "64"
+	}
 }
 
 func joinVersion(major, minor, patch, patchMinor string) string {
@@ -298,8 +488,7 @@ func majorOf(version string) string {
 	return version
 }
 
-func (p *Parser) inferInfo(res *Result) {
-	uaLower := strings.ToLower(res.UA)
+func (p *Parser) inferInfo(res *Result, uaLower string) {
 	nameLower := strings.ToLower(res.Browser.Name)
 
 	// Bot detection. Known false-positive tokens (e.g. the Cubot phone brand)
@@ -311,12 +500,35 @@ func (p *Parser) inferInfo(res *Result) {
 		}
 	}
 	res.IsBot = isBot(nameLower, scan)
-	res.IsAICrawler = isAICrawler(uaLower)
-	if res.IsAICrawler {
+
+	if ai := matchBotIdentity(uaLower, aiBots); ai != nil {
 		// Every AI agent (training crawler, AI-search indexer, or on-demand
 		// fetcher) is automated traffic; many of their tokens ("Claude-User",
 		// "meta-externalagent") contain no generic bot marker.
+		res.IsAICrawler = true
 		res.IsBot = true
+
+		// uap-core has no patterns for most AI agents, so its generic
+		// fallbacks produce junk families ("Other", "crawler", or a URL
+		// fragment like "com/bot"). Synthesize the canonical identity from
+		// the UA's own token instead.
+		if isJunkBotName(res.Browser.Name) {
+			if name, version := extractAgentIdentity(res.UA, uaLower, ai.token); name != "" {
+				res.Browser.Name = name
+				if version != "" {
+					res.Browser.Version = version
+					res.Browser.Major = majorOf(version)
+				}
+			}
+		}
+		res.Bot = &BotInfo{Name: res.Browser.Name, Category: ai.category, Vendor: ai.vendor}
+	} else if res.IsBot {
+		bot := &BotInfo{Name: res.Browser.Name, Category: "other"}
+		if classic := matchBotIdentity(uaLower, classicBots); classic != nil {
+			bot.Category = classic.category
+			bot.Vendor = classic.vendor
+		}
+		res.Bot = bot
 	}
 
 	// Browser Type
@@ -407,11 +619,87 @@ func (p *Parser) inferInfo(res *Result) {
 	// CPU architecture (best effort from UA)
 	if strings.Contains(uaLower, "x86_64") || strings.Contains(uaLower, "amd64") || strings.Contains(uaLower, "win64") || strings.Contains(uaLower, "x64") {
 		res.CPU.Architecture = "amd64"
+		res.CPU.Bitness = "64"
 	} else if strings.Contains(uaLower, "arm64") || strings.Contains(uaLower, "aarch64") {
 		res.CPU.Architecture = "arm64"
+		res.CPU.Bitness = "64"
 	} else if strings.Contains(uaLower, "i686") || strings.Contains(uaLower, "i386") {
 		res.CPU.Architecture = "x86"
+		res.CPU.Bitness = "32"
 	}
+}
+
+// platformOf maps a marketing OS name onto the canonical os.platform key.
+func platformOf(osName string) string {
+	n := strings.ToLower(osName)
+	switch {
+	case strings.Contains(n, "windows"):
+		return "windows"
+	case strings.Contains(n, "mac os"), strings.Contains(n, "macos"):
+		return "macos"
+	case n == "ios" || strings.HasPrefix(n, "ios ") || strings.Contains(n, "ipados"):
+		return "ios"
+	case strings.Contains(n, "android"):
+		return "android"
+	case strings.Contains(n, "chrome os"), strings.Contains(n, "chromium os"):
+		return "chromeos"
+	case strings.Contains(n, "tizen"):
+		return "tizen"
+	case strings.Contains(n, "playstation"):
+		return "playstation"
+	case isLinuxFamily(n):
+		return "linux"
+	default:
+		return "other"
+	}
+}
+
+var linuxFamilies = []string{
+	"linux", "ubuntu", "fedora", "debian", "arch", "mint", "suse",
+	"centos", "red hat", "gentoo", "slackware", "kali", "manjaro", "freebsd",
+}
+
+func isLinuxFamily(nameLower string) bool {
+	for _, f := range linuxFamilies {
+		if strings.Contains(nameLower, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// formFactorFromType derives device.form_factor when Sec-CH-UA-Form-Factors
+// was absent; wearable maps to the CH vocabulary's "watch".
+func formFactorFromType(deviceType string) string {
+	if deviceType == "wearable" {
+		return "watch"
+	}
+	return deviceType
+}
+
+// detectFrozenUA reports UA strings that are frozen/reduced templates: the
+// Chromium reduced UA (version frozen to N.0.0.0, Android model to "K"), and
+// the Mac OS X token capped at 10_15_7 (real Catalina tops out at Safari 15).
+func detectFrozenUA(uaLower string) bool {
+	if strings.Contains(uaLower, "android 10; k)") {
+		return true
+	}
+	for _, prefix := range []string{"chrome/", "chromium/"} {
+		if v := extractVersionAfter(uaLower, prefix); strings.HasSuffix(v, ".0.0.0") {
+			return true
+		}
+	}
+	if strings.Contains(uaLower, "intel mac os x 10_15_7") {
+		if strings.Contains(uaLower, "chrome/") || strings.Contains(uaLower, "chromium/") {
+			return true
+		}
+		if v := extractVersionAfter(uaLower, "version/"); v != "" {
+			if major, err := strconv.Atoi(majorOf(v)); err == nil && major >= 16 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isBot(nameLower, uaLower string) bool {
@@ -427,13 +715,65 @@ func isBot(nameLower, uaLower string) bool {
 	return false
 }
 
-func isAICrawler(uaLower string) bool {
-	for _, bot := range aiBots {
-		if strings.Contains(uaLower, bot) {
-			return true
+// matchBotIdentity returns the first identity whose token appears in the UA.
+func matchBotIdentity(uaLower string, table []botIdentity) *botIdentity {
+	for i := range table {
+		if strings.Contains(uaLower, table[i].token) {
+			return &table[i]
 		}
 	}
-	return false
+	return nil
+}
+
+// isJunkBotName reports that uap-core failed to isolate a real agent family:
+// its generic fallback patterns yield "Other", a bare "crawler"/"spider"/
+// "bot", or a URL fragment containing a slash ("com/bot").
+func isJunkBotName(name string) bool {
+	switch strings.ToLower(name) {
+	case "other", "crawler", "spider", "bot":
+		return true
+	}
+	return strings.Contains(name, "/")
+}
+
+// extractAgentIdentity recovers the canonical agent name (original casing)
+// and its version from the UA, given the lowercase token that matched:
+// "...; ChatGPT-User/1.0; ..." → ("ChatGPT-User", "1.0").
+//
+// The matched token may be only a PREFIX of the real agent (the table lists
+// "googleagent-" to catch GoogleAgent-Mariner / -URLContext), so the name is
+// grown from the match start over agent-name characters to the natural
+// boundary — otherwise "GoogleAgent-Mariner/1.0" would truncate to
+// "googleagent" and lose its version.
+func extractAgentIdentity(ua, uaLower, token string) (name, version string) {
+	idx := strings.Index(uaLower, token)
+	if idx == -1 {
+		return "", ""
+	}
+	end := idx + len(token)
+	for end < len(ua) && isAgentNameChar(ua[end]) {
+		end++
+	}
+	name = strings.Trim(ua[idx:end], "-_ ")
+
+	rest := ua[end:]
+	if len(rest) > 1 && (rest[0] == '/' || rest[0] == ' ') {
+		v := rest[1:]
+		vend := 0
+		for vend < len(v) && (v[vend] >= '0' && v[vend] <= '9' || v[vend] == '.') {
+			vend++
+		}
+		version = strings.Trim(v[:vend], ".")
+	}
+	return name, version
+}
+
+// isAgentNameChar reports whether b can appear inside an agent token name
+// (letters, digits, '-', '_'); '.' and '/' are excluded so a version suffix
+// is never swallowed into the name.
+func isAgentNameChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '-' || b == '_'
 }
 
 // containsBotPattern checks if word appears in s followed by a non-letter char or end-of-string.
@@ -555,6 +895,9 @@ func (p *Parser) applyClientHints(res *Result, headers map[string]string) {
 	if arch != "" {
 		res.CPU.Architecture = normalizeArch(arch, bitness, res.CPU.Architecture)
 	}
+	if bitness != "" {
+		res.CPU.Bitness = bitness
+	}
 
 	if mobile == "?1" {
 		res.Device.Type = "mobile"
@@ -569,18 +912,24 @@ func (p *Parser) applyClientHints(res *Result, headers map[string]string) {
 		switch {
 		case strings.Contains(ff, "watch"):
 			res.Device.Type = "wearable"
+			res.Device.FormFactor = "watch"
 		case strings.Contains(ff, "xr"):
 			res.Device.Type = "xr"
+			res.Device.FormFactor = "xr"
 		case strings.Contains(ff, "automotive"):
 			res.Device.Type = "automotive"
+			res.Device.FormFactor = "automotive"
 		case strings.Contains(ff, "tablet"):
 			res.Device.Type = "tablet"
+			res.Device.FormFactor = "tablet"
 		case strings.Contains(ff, "eink"):
 			// EInk describes the display, not the device class — keep the type.
 		case strings.Contains(ff, "mobile"):
 			res.Device.Type = "mobile"
+			res.Device.FormFactor = "mobile"
 		case strings.Contains(ff, "desktop"):
 			res.Device.Type = "desktop"
+			res.Device.FormFactor = "desktop"
 		}
 	}
 }

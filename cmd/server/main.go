@@ -18,6 +18,10 @@ import (
 type ParseRequest struct {
 	UA      string            `json:"ua"`
 	Headers map[string]string `json:"headers"`
+	// Signals carries optional browser-side evidence collected on the page
+	// (max_touch_points, webgl_renderer, ...) — see the root README's
+	// "Forwarding headers from your backend" section.
+	Signals *core.Signals `json:"signals"`
 }
 
 // envOr returns the value of the environment variable key, or def if unset/empty.
@@ -83,12 +87,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	disableCorrections, _ := strconv.ParseBool(os.Getenv("UA_DISABLE_CORRECTIONS_UPDATE"))
+
 	cfg := core.Config{
-		Ctx:               ctx,
-		DisableAutoUpdate: disableUpdate,
-		LRUCacheSize:      cacheSize,
-		UpdateURL:         os.Getenv("UA_UPDATE_URL"),
-		UpdateInterval:    os.Getenv("UA_UPDATE_INTERVAL"),
+		Ctx:                      ctx,
+		DisableAutoUpdate:        disableUpdate,
+		LRUCacheSize:             cacheSize,
+		UpdateURL:                os.Getenv("UA_UPDATE_URL"),
+		UpdateInterval:           os.Getenv("UA_UPDATE_INTERVAL"),
+		CorrectionsURL:           os.Getenv("UA_CORRECTIONS_URL"),
+		DisableCorrectionsUpdate: disableCorrections,
 	}
 
 	parser, err := core.New(cfg)
@@ -101,8 +109,15 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		version, rules := parser.CorrectionsInfo()
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok",
+			"corrections": map[string]any{
+				"version": version,
+				"rules":   rules,
+			},
+		})
 	}
 
 	parseHandler := func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +134,7 @@ func main() {
 			return
 		}
 
-		result := parser.Parse(req.UA, req.Headers)
+		result := parser.ParseFull(req.UA, req.Headers, req.Signals)
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(result); err != nil {

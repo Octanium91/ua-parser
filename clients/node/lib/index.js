@@ -160,6 +160,57 @@ class UaParser {
         if (result !== 0) {
             throw new Error('Failed to initialize WASM parser');
         }
+
+        // WASI preview1 has no sockets, so the WASM engine cannot fetch
+        // correction-rule updates itself — the host does it: one fetch now,
+        // then daily (unref'd so it never keeps the process alive). Failures
+        // are non-fatal; the embedded snapshot keeps serving.
+        if (!config.disable_corrections_update && typeof this._wasmExports.updateCorrections === 'function') {
+            const url = config.corrections_url ||
+                'https://raw.githubusercontent.com/Octanium91/ua-parser/main/pkg/core/resources/corrections.yaml';
+            this._pushCorrectionsFromURL(url);
+            const timer = setInterval(() => this._pushCorrectionsFromURL(url), 24 * 60 * 60 * 1000);
+            if (typeof timer.unref === 'function') timer.unref();
+        }
+    }
+
+    _pushCorrectionsFromURL(url) {
+        const https = require('https');
+        const req = https.get(url, { timeout: 30000 }, (res) => {
+            if (res.statusCode !== 200) {
+                res.resume();
+                console.warn(`WARN: ua-parser corrections fetch status ${res.statusCode} (embedded rules stay active)`);
+                return;
+            }
+            const chunks = [];
+            let total = 0;
+            res.on('data', (chunk) => {
+                total += chunk.length;
+                if (total > 1 << 20) { // 1 MB cap, mirrors the engine
+                    res.destroy(new Error('corrections payload exceeds 1 MB'));
+                    return;
+                }
+                chunks.push(chunk);
+            });
+            res.on('end', () => {
+                try {
+                    const yaml = Buffer.concat(chunks);
+                    const ptr = this._wasmExports.malloc(yaml.length);
+                    new Uint8Array(this._wasmMemory.buffer, ptr, yaml.length).set(yaml);
+                    const rc = this._wasmExports.updateCorrections(ptr, yaml.length);
+                    this._wasmExports.free(ptr);
+                    if (rc !== 0) {
+                        console.warn('WARN: ua-parser corrections rejected by engine (keeping last good)');
+                    }
+                } catch (e) {
+                    console.warn('WARN: ua-parser corrections push failed: ' + e.message);
+                }
+            });
+        }).on('error', (e) => {
+            console.warn('WARN: ua-parser corrections fetch failed (embedded rules stay active): ' + e.message);
+        });
+        // Don't let this background fetch keep an otherwise-idle process alive.
+        req.on('socket', (s) => { if (typeof s.unref === 'function') s.unref(); });
     }
 
     _parseWasmNode(payload) {
@@ -231,15 +282,18 @@ class UaParser {
     /**
      * Parses a User-Agent string and optional Client Hint headers.
      * @param {string} ua User-Agent string
-     * @param {Object} [headers] Map of HTTP headers (Client Hints)
+     * @param {Object} [headers] Map of HTTP headers (Client Hints, X-Requested-With)
+     * @param {Object} [signals] Optional browser signals collected on the page
+     *   ({max_touch_points, platform, webgl_renderer, screen: {w,h,dpr}, ...});
+     *   in the browser build the engine auto-collects them when omitted.
      * @returns {Object} Parsed result
      */
-    parse(ua, headers = {}) {
+    parse(ua, headers = {}, signals = undefined) {
         if (!this.isInitialized) {
             throw new Error('Parser not initialized. Call init() first.');
         }
 
-        const payload = JSON.stringify({ ua, headers });
+        const payload = JSON.stringify(signals ? { ua, headers, signals } : { ua, headers });
 
         if (this.isWasm && isBrowser) {
             const resStr = globalThis.parseUA(payload);

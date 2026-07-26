@@ -83,8 +83,10 @@ async function start() {
     await parser.init();
 
     http.createServer((req, res) => {
-        // Simply pass the request headers object. 
-        // The parser automatically looks for 'sec-ch-ua-*' keys.
+        // Simply pass the request headers object.
+        // The parser automatically looks for 'sec-ch-ua-*' keys, and future
+        // signals (e.g. x-requested-with for in-app detection) flow through
+        // automatically — see the backend forwarding guide in the root README.
         const result = parser.parse(req.headers['user-agent'], req.headers);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -245,6 +247,25 @@ The `init(config)` method accepts an optional configuration object:
 | `lru_cache_size` | `number` | `1000` | Number of entries to keep in the LRU cache. Set to `0` to disable. |
 | `update_url` | `string` | *(official uap-core)* | Custom URL to download `regexes.yaml` from. |
 | `update_interval` | `string` | `"24h"` | Interval for background updates (e.g., `"12h"`, `"1h"`). |
+| `corrections_url` | `string` | *(this repo's `main`)* | Custom URL for the hot-updated correction layer (`corrections.yaml`). |
+| `disable_corrections_update` | `boolean` | `false` | If `true`, runtime correction updates are disabled (the embedded snapshot still applies). See note below. |
+
+> **Correction updates in the browser/WASM client:** even though `disable_auto_update` defaults to `true` in WASM mode (the multi-MB regex DB is release-bound), the small [correction layer](../../README.md#correction-layer) is still fetched — in the browser the module fetches `corrections.yaml` itself at init; in the Node WASI fallback the client fetches and pushes it. Set `disable_corrections_update: true` to opt out.
+
+## Browser signals (optional)
+
+`parse(ua, headers, signals)` accepts a third argument with browser-side evidence that UA and Client Hints can't provide (Safari/Firefox send no Client Hints at all). The **browser build collects these automatically** at init; for the Node client you pass them explicitly:
+
+```js
+const result = parser.parse(req.headers['user-agent'], req.headers, {
+    max_touch_points: 5,          // unmasks iPads reporting a desktop (Mac) UA
+    platform: 'MacIntel',
+    webgl_renderer: 'Apple M2',   // Apple Silicon / Android SoC (fingerprinting-adjacent)
+    screen: { w: 1180, h: 820, dpr: 2 }
+});
+```
+
+Priority inside the engine: **Client Hints > signals > UA string**.
 
 ## Result Object Structure
 
@@ -261,15 +282,18 @@ The `parse()` method returns a detailed object:
   },
   "os": {
     "name": "Windows",
-    "version": "11"
+    "version": "11",
+    "platform": "windows"
   },
   "device": {
     "model": "Pixel 5",
     "vendor": "Google",
-    "type": "mobile"
+    "type": "mobile",
+    "form_factor": "mobile"
   },
   "cpu": {
-    "architecture": "arm64"
+    "architecture": "arm64",
+    "bitness": "64"
   },
   "engine": {
     "name": "Blink",
@@ -277,7 +301,33 @@ The `parse()` method returns a detailed object:
   },
   "category": "mobile",
   "is_bot": false,
-  "is_ai_crawler": false
+  "is_ai_crawler": false,
+  "is_frozen_ua": false,
+  "bot": null,
+  "gpu": null
+}
+```
+
+Field notes (added in Result v1.1):
+
+| Field | Description |
+|-------|-------------|
+| `os.platform` | Canonical machine-readable OS key: `windows`, `macos`, `ios`, `android`, `chromeos`, `linux`, `tizen`, `playstation`, `other`. `os.name` keeps the marketing spelling. |
+| `device.form_factor` | `desktop` / `mobile` / `tablet` / `watch` / `xr` / `automotive` / `tv` (from `Sec-CH-UA-Form-Factors` when present, else derived from `type`). |
+| `cpu.bitness` | `"64"`, `"32"`, or `""`. |
+| `is_frozen_ua` | `true` when the UA is a frozen/reduced template (Chromium reduced UA, `Android 10; K`, capped `Mac OS X 10_15_7`) — a hint to trust Client Hints over the UA. |
+| `bot` | `null` for humans; for bots `{ "name", "category", "vendor" }` where category is `training` / `search` / `user-fetch` / `agent` (AI) or `search-crawler` / `seo` / `monitoring` / `social-preview` (classic). |
+| `gpu` | `null` unless a WebGL signal was supplied; then `{ "vendor", "renderer" }`. |
+
+Example bot result:
+
+```json
+{
+  "browser": { "name": "ChatGPT-User", "version": "1.0", "major": "1", "type": "bot" },
+  "category": "bot",
+  "is_bot": true,
+  "is_ai_crawler": true,
+  "bot": { "name": "ChatGPT-User", "category": "user-fetch", "vendor": "OpenAI" }
 }
 ```
 

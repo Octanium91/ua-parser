@@ -65,6 +65,32 @@ func initUA(ptr uint32, length uint32) int32 {
 	return 0
 }
 
+// updateCorrections lets the HOST push a corrections.yaml payload into the
+// engine: WASI preview1 has no sockets, so the Java/Node clients fetch the
+// file themselves and call this export (init-time + periodic). Returns 0 on
+// success, -1 on rejection (last good rules are kept either way).
+//
+//go:wasmexport updateCorrections
+func updateCorrections(ptr uint32, length uint32) int32 {
+	if ptr == 0 || length == 0 {
+		return -1
+	}
+	if parser == nil {
+		if initUA(0, 0) != 0 {
+			return -1
+		}
+	}
+	input := (*[1 << 30]byte)(unsafe.Pointer(uintptr(ptr)))[:length:length]
+	// Copy out of WASM linear memory: the host frees ptr after the call, and
+	// the compiled rule set must not alias host-owned memory.
+	data := make([]byte, length)
+	copy(data, input)
+	if err := parser.ApplyCorrectionsYAML(data); err != nil {
+		return -1
+	}
+	return 0
+}
+
 //go:wasmexport parseUA
 func parseUA(ptr uint32, length uint32) uint64 {
 	// Guard against a null pointer or empty input before constructing the
@@ -86,6 +112,7 @@ func parseUA(ptr uint32, length uint32) uint64 {
 	var payload struct {
 		UA      string            `json:"ua"`
 		Headers map[string]string `json:"headers"`
+		Signals *core.Signals     `json:"signals"`
 	}
 
 	// Try to parse as JSON payload (which allows passing headers)
@@ -93,9 +120,10 @@ func parseUA(ptr uint32, length uint32) uint64 {
 	if err := json.Unmarshal(input, &payload); err != nil || payload.UA == "" {
 		payload.UA = string(input)
 		payload.Headers = nil
+		payload.Signals = nil
 	}
 
-	result := parser.Parse(payload.UA, payload.Headers)
+	result := parser.ParseFull(payload.UA, payload.Headers, payload.Signals)
 	resBytes, _ := json.Marshal(result)
 
 	// Allocate buffer for the result to be read by the host

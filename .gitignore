@@ -6,6 +6,12 @@
 *.dylib
 *.wasm
 
+# Stray extensionless build outputs of the wasm/wasmjs commands
+# (`go build ./cmd/wasm` without -o drops a "wasm"/"wasmjs" binary at the root)
+/wasm
+/wasmjs
+/server
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -34,3 +40,10 @@ pkg/core/resources/regexes.json
 /tools/compare/node/node_modules/
 /tools/compare/out/
 /tools/compare/java/target/
+
+# Java client build output
+/clients/java/target/
+
+# Python bytecode cache
+__pycache__/
+*.pyc

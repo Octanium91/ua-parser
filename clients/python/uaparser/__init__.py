@@ -100,15 +100,20 @@ class UaParser:
             self.lib.FreeString(err_ptr)
             raise Exception(f"Failed to initialize parser: {err_str}")
 
-    def parse(self, ua, headers=None):
+    def parse(self, ua, headers=None, signals=None):
         """
-        Parses a User-Agent string and optional Client Hint headers.
+        Parses a User-Agent string with optional Client Hint headers and an
+        optional browser-signals dict (max_touch_points, platform,
+        webgl_renderer, screen, ...) that unmasks what UA and Client Hints
+        cannot — e.g. iPads posing as Macs in Safari.
         Returns a dictionary with the parsed results.
         """
         payload = {
             "ua": ua,
             "headers": headers or {}
         }
+        if signals:
+            payload["signals"] = signals
         payload_json = json.dumps(payload).encode('utf-8')
         res_ptr = self.lib.Parse(payload_json)
         if res_ptr:

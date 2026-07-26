@@ -25,6 +25,7 @@ public class WasmBackend implements ParserBackend {
     private final ExportFunction free;
     private final ExportFunction initUA;
     private final ExportFunction parseUA;
+    private final ExportFunction updateCorrections; // null on wasm modules predating the export
     private final WasiPreview1 wasi;
 
     public WasmBackend() {
@@ -52,11 +53,42 @@ public class WasmBackend implements ParserBackend {
             this.free = instance.export("free");
             this.initUA = instance.export("initUA");
             this.parseUA = instance.export("parseUA");
+            this.updateCorrections = tryExport(instance, "updateCorrections");
 
             // Go wasip1 reactors require _initialize before any other export.
             instance.export("_initialize").apply();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize WASM backend", e);
+        }
+    }
+
+    // tryExport resolves an optional export: older bundled wasm modules
+    // predate updateCorrections and must keep working.
+    private static ExportFunction tryExport(Instance instance, String name) {
+        try {
+            return instance.export(name);
+        } catch (RuntimeException missing) {
+            return null;
+        }
+    }
+
+    /**
+     * Pushes a corrections.yaml payload into the engine (validated inside;
+     * whole-file reject keeps the last good rules).
+     *
+     * @return true when the engine accepted the payload.
+     */
+    public synchronized boolean pushCorrections(byte[] yaml) {
+        if (updateCorrections == null || yaml == null || yaml.length == 0) {
+            return false;
+        }
+        long ptr = malloc.apply((long) yaml.length)[0];
+        try {
+            memory.write((int) ptr, yaml);
+            long rc = updateCorrections.apply(ptr, (long) yaml.length)[0];
+            return (int) rc == 0;
+        } finally {
+            free.apply(ptr);
         }
     }
 

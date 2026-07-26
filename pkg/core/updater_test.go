@@ -149,13 +149,106 @@ func TestUpdaterSizeCap(t *testing.T) {
 // A non-positive interval must fall back to the default instead of feeding
 // time.NewTicker a value it panics on (previously an infinite panic loop).
 func TestUpdaterZeroIntervalDoesNotPanicLoop(t *testing.T) {
-	p, err := New(Config{UpdateInterval: "0s", UpdateURL: "http://127.0.0.1:0/never"})
+	// DisableCorrectionsUpdate keeps this offline: the updater otherwise does
+	// an initial corrections fetch to the default (network) URL at startup.
+	p, err := New(Config{UpdateInterval: "0s", UpdateURL: "http://127.0.0.1:0/never", DisableCorrectionsUpdate: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	// Give the updater goroutine a moment to start (and previously: to panic).
 	time.Sleep(50 * time.Millisecond)
 	p.Close()
+}
+
+const minimalCorrections = `
+schema_version: 1
+version: "updater-test"
+rules:
+  - id: updater-probe
+    match:
+      ua_contains: "updaterprobe/"
+      ua_regex: 'UpdaterProbe/([\d.]+)'
+    set:
+      browser_name: "UpdaterProbe"
+      browser_version: "$1"
+    tests:
+      - ua: "Mozilla/5.0 UpdaterProbe/2.0"
+        expect:
+          browser.name: "UpdaterProbe"
+          browser.version: "2.0"
+`
+
+// A successful corrections update must swap the rule set, purge the cache,
+// bump the generation, and record the ETag.
+func TestCorrectionsUpdaterSwap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") == `"c1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"c1"`)
+		w.Write([]byte(minimalCorrections))
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{DisableAutoUpdate: true, LRUCacheSize: 10, CorrectionsURL: srv.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close()
+
+	ua := "Mozilla/5.0 UpdaterProbe/2.0"
+	if before := p.Parse(ua, nil); before.Browser.Name == "UpdaterProbe" {
+		t.Fatal("embedded rules unexpectedly know UpdaterProbe")
+	}
+
+	genBefore := p.gen.Load()
+	p.updateCorrections()
+
+	if p.gen.Load() != genBefore+1 {
+		t.Errorf("generation not bumped: %d -> %d", genBefore, p.gen.Load())
+	}
+	if p.lastCorrectionsETag != `"c1"` {
+		t.Errorf("corrections ETag not recorded, got %q", p.lastCorrectionsETag)
+	}
+	if after := p.Parse(ua, nil); after.Browser.Name != "UpdaterProbe" {
+		t.Errorf("rules/cache not refreshed: browser %q", after.Browser.Name)
+	}
+
+	// Second call revalidates via ETag: 304 must be a no-op.
+	gen := p.gen.Load()
+	p.updateCorrections()
+	if p.gen.Load() != gen {
+		t.Error("304 must not bump the generation")
+	}
+}
+
+// A bad corrections payload must keep the embedded (last good) rules.
+func TestCorrectionsUpdaterKeepsLastGood(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("schema_version: 99\nrules: []"))
+	}))
+	defer srv.Close()
+
+	p, err := New(Config{DisableAutoUpdate: true, CorrectionsURL: srv.URL})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer p.Close()
+
+	versionBefore, rulesBefore := p.CorrectionsInfo()
+	gen := p.gen.Load()
+	p.updateCorrections()
+
+	if p.gen.Load() != gen {
+		t.Error("rejected payload must not bump the generation")
+	}
+	if version, rules := p.CorrectionsInfo(); version != versionBefore || rules != rulesBefore {
+		t.Error("rejected payload must keep the embedded rule set")
+	}
+	if p.lastCorrectionsETag != "" {
+		t.Error("ETag of a rejected payload must not be recorded")
+	}
 }
 
 // jitter must stay within ±10% of the interval and never be non-positive.
