@@ -1,8 +1,9 @@
 name: CI
 
-# PR/push test gate. Critical for the correction layer: corrections.yaml is
+# Per-commit gate. Critical for the correction layer: corrections.yaml is
 # hot-delivered to running fleets straight from this repository, so nothing
-# may land on main untested.
+# may land on main untested. Delegates to the reusable test workflow so the
+# steps stay identical to the release-time gate.
 on:
   pull_request:
     paths:
@@ -11,6 +12,7 @@ on:
       - "go.mod"
       - "go.sum"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/test.yml"
   push:
     branches: [main]
     paths:
@@ -19,40 +21,11 @@ on:
       - "go.mod"
       - "go.sum"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/test.yml"
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build all packages
-        run: go build ./...
-
-      - name: Build WASM targets
-        run: |
-          GOOS=wasip1 GOARCH=wasm go build ./cmd/wasm
-          GOOS=js GOARCH=wasm go build ./cmd/wasmjs
-
-      - name: Test
-        run: go test -count=1 ./...
-
-      - name: Test (race detector)
-        # The correction layer swaps an atomic.Pointer rule set under
-        # concurrent Parse() calls; -race (cgo, available on the Linux runner)
-        # is the gate for that concurrency. Not runnable on the cgo-less dev box.
-        run: go test -race -count=1 ./pkg/core
-
-      - name: gofmt
-        run: |
-          out=$(gofmt -l pkg cmd)
-          if [ -n "$out" ]; then
-            echo "gofmt needed on:" && echo "$out" && exit 1
-          fi
+    uses: ./.github/workflows/test.yml
