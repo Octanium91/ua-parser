@@ -111,13 +111,18 @@ func main() {
 		}
 		version, rules := parser.CorrectionsInfo()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"status": "ok",
-			"corrections": map[string]any{
-				"version": version,
-				"rules":   rules,
-			},
-		})
+		// A struct (not a map) so key order is stable and matches the docs:
+		// {"status":"ok","corrections":{"version":...,"rules":...}}.
+		resp := struct {
+			Status      string `json:"status"`
+			Corrections struct {
+				Version string `json:"version"`
+				Rules   int    `json:"rules"`
+			} `json:"corrections"`
+		}{Status: "ok"}
+		resp.Corrections.Version = version
+		resp.Corrections.Rules = rules
+		json.NewEncoder(w).Encode(resp)
 	}
 
 	parseHandler := func(w http.ResponseWriter, r *http.Request) {

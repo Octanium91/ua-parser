@@ -2,13 +2,15 @@
 
 This is the Java wrapper for the high-performance Universal User-Agent Parser. It uses JNA (Java Native Access) to interface with the core Go-based shared library.
 
+**Requires Java 11 or higher.**
+
 ## Installation
 
 ### JitPack
 
 **JitPack** is the recommended way to include the library directly from GitHub — it requires **no authentication**.
 
-> **Replace `TAG` with the exact release tag, including the leading `v`** — e.g. `v0.0.48` (not `0.0.48`). Using a version without the `v` will fail to resolve on JitPack. See the [Releases page](https://github.com/Octanium91/ua-parser/releases) for the current tag.
+> **Replace `TAG` with the exact release tag, including the leading `v`** — e.g. `v0.0.48` (not `0.0.48`). Using a version without the `v` will fail to resolve on JitPack. **Check the [Releases page](https://github.com/Octanium91/ua-parser/releases) for the current tag** (the example here may be behind).
 
 #### Maven (`pom.xml`)
 
@@ -92,7 +94,7 @@ The library automatically detects the operating system, architecture, and libc t
 
 You can check which backend is active via `parser.getBackendName()` (`"JnaBackend"` or `"WasmBackend"`).
 
-> **Note**: If you are using **JitPack**, make sure you are using a version that includes the driver for your platform. The GitHub Packages version is recommended for the most complete set of pre-built drivers.
+> **Note**: JitPack and GitHub Packages serve the **same** pre-built release JAR — every native driver plus the WASM fallback are bundled (CI gates the release on all of them being present). Prefer **JitPack** for the auth-free path; use a real released `v`-tag (see the [Releases page](https://github.com/Octanium91/ua-parser/releases) for the latest).
 
 #### Alpine Linux / musl
 
@@ -110,6 +112,8 @@ If you encounter an `UnsatisfiedLinkError`, it usually means the native library 
 > `UaParser parser = new UaParser("/path/to/libua-parser.so");`
 
 ## Usage
+
+> Works out of the box only from a **released artifact** (JitPack / GitHub Packages / the Releases JAR) — those bundle the native drivers and the WASM fallback. A bare `mvn package` of a source checkout produces a driver-less JAR and `new UaParser()` will fail; see [Compilation](#compilation).
 
 ```java
 import com.github.octanium91.UaParser;
@@ -142,7 +146,7 @@ public class Main {
         // 4. Parse (Returns a typed Result object)
         UaParser.Result result = parser.parse(ua, headers);
 
-        // 5. Use data (Result v1.1 fields included)
+        // 5. Use data (full Result v1.2 shape)
         System.out.println("OS: " + result.os.name + " " + result.os.version + " (" + result.os.platform + ")");
         System.out.println("Browser: " + result.browser.name + " " + result.browser.version);
         System.out.println("Device: " + result.device.vendor + " / " + result.device.formFactor);
@@ -169,7 +173,22 @@ Priority inside the engine: **Client Hints > signals > UA string**.
 
 ### Typed Result fields
 
-`Result` exposes: `browser{name,version,major,type}`, `os{name,version,platform}`, `device{model,vendor,type,formFactor}`, `cpu{architecture,bitness}`, `engine{name,version}`, `category`, `isBot`, `isAiCrawler`, `isFrozenUa`, `bot` (a `BotInfo{name,category,vendor}`, null for humans), and `gpu` (a `GPUInfo{vendor,renderer}`, null unless a WebGL signal was supplied). Full JSON example and field semantics: [root README](../../README.md#example-response).
+The `Result` class mirrors the full engine output (schema v1.2). Fields:
+
+- `resultVersion` — result schema version (`"1.2"`).
+- `browser{name,version,major,type}`, `engine{name,version}`, `category`.
+- `os{name,version,platform,versionName,versionRaw}`.
+- `device{model,vendor,type,formFactor}`, `cpu{architecture,bitness}`.
+- `isBot`, `isAiCrawler`, `isFrozenUa`.
+- Convenience flags: `isMobile`, `isDesktop`, `isTouchCapable`, `isChromeFamily`, `isAppleSilicon`.
+- `automation` (`AutomationInfo{headless,electron,webdriver}`) — undeclared automation.
+- `integrity` (`IntegrityInfo{spoofed,reasons}`) — UA/CH/signals consistency.
+- `security` (`SecurityInfo{suspicious,category}`) — attack payloads in the UA.
+- `detection` (`DetectionInfo{clientHintsUsed,highEntropy,signalsUsed}`) — input provenance.
+- `classHash` — coarse client-class bucket key (not a tracking fingerprint).
+- `bot` (`BotInfo{name,category,vendor}`, null for humans), `gpu` (`GPUInfo{vendor,renderer}`, null unless a WebGL signal was supplied).
+
+Full JSON example and field semantics: [root README](../../README.md#example-response).
 
 ## Forwarding headers from a real request
 

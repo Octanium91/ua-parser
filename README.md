@@ -2,18 +2,39 @@
 
 A high-performance, cross-platform User-Agent parser: one Go core exposed to **Go, Java, Node.js, and Python** (plus a REST microservice and WebAssembly), with Client Hints support, bot/AI-crawler classification, and a **runtime-updated regex database and correction layer** — so detection stays fresh without redeploying.
 
+## Quickstart — pick your mode
+
+One Go core gives byte-identical results everywhere; choose how you run it:
+
+| I want to… | Use | Jump to |
+|---|---|---|
+| Parse UAs inside a **Go** service | the Go package | [Go Library Usage](#go-library-usage) |
+| Parse from **Java / Node.js / Python** | that language's client | [Client Libraries](#client-libraries) |
+| A **standalone HTTP service** (any language, or a sidecar) | the REST server / Docker image | [REST API Server](#rest-api-server) |
+| Parse **in the browser** | the Node.js client (WASM build) | [Usage (Browser / Bundlers)](./clients/node#usage-browser--bundlers) |
+
+Fastest taste — run the service and parse a request, no install beyond Docker:
+
+```bash
+docker run -p 8080:8080 ghcr.io/octanium91/ua-parser:latest
+curl -X POST http://localhost:8080/ -H 'Content-Type: application/json' \
+  -d '{"ua":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"}'
+```
+
+New terms used below — **Client Hints** (`Sec-CH-UA-*` headers the browser sends), **frozen UA**, **correction layer**, **signals**, **`class_hash`** — each has its own section further down.
+
 ## Features
 
-- **Three Modes of Operation**:
-  - **Native Library**: Importable Go package.
-  - **Microservice**: Ready-to-use HTTP REST API server.
-  - **Multi-Language Support**: Official wrappers for **Python**, **Node.js**, and **Java** (located in `/clients`).
-  - **Multi-Platform**: Native support for **linux/amd64**, **linux/arm64** (glibc and musl artifacts), **windows/amd64**, **macOS (amd64/arm64)**, plus **WebAssembly** builds (WASI reactor and browser js/wasm).
+- **Ways to run it**:
+  - **Native Go library**: importable package.
+  - **HTTP microservice**: ready-to-use REST API server (Docker image provided).
+  - **Language clients**: official wrappers for **Python**, **Node.js**, and **Java** (in `/clients`).
+- **Multi-platform**: native builds for **linux/amd64**, **linux/arm64** (glibc and musl artifacts), **windows/amd64**, **macOS (amd64/arm64)**, plus **WebAssembly** (WASI reactor and browser js/wasm).
 - **Graceful Degradation (Java & Node.js)**: Smart client architecture that attempts to load the ultra-fast native driver (JNA / koffi), but transparently falls back to a bundled WebAssembly engine if the native library cannot be loaded (e.g., on Alpine Linux).
 - **Client Hints Priority**: Automatically uses `Sec-CH-UA` headers with **highest priority** for precise OS and device detection (e.g., distinguishing Windows 11 from Windows 10 where the UA string might be ambiguous).
 - **Correction Layer**: A declarative override config ([corrections.yaml](./pkg/core/resources/corrections.yaml)) patches known detection gaps (in-app browsers, vehicles, consoles, device vendors) on top of uap-core — embedded at build time and **hot-updated at runtime in every mode**, including the browser WASM build. Design: [docs/correction-layer.md](./docs/correction-layer.md).
 - **Browser Signals**: An optional `signals` block (touch points, `navigator.platform`, WebGL renderer, screen) unmasks what UA and Client Hints cannot — e.g. iPads masquerading as Macs in Safari, which sends no Client Hints at all. The browser WASM client collects them automatically.
-- **Rich Result**: Beyond browser/OS/device/engine — canonical `os.platform`, CPU bitness, `device.form_factor`, `is_frozen_ua`, and a classified `bot` object (`{name, category, vendor}` — training / search / user-fetch / agent / search-crawler / seo / social-preview) with canonical names synthesized even where uap-core yields junk.
+- **Rich Result**: Beyond browser/OS/device/engine — canonical `os.platform`, CPU bitness, `device.form_factor`, `is_frozen_ua`, and a classified `bot` object (`{name, category, vendor}` — AI: training / search / user-fetch / agent / other; classic: search-crawler / seo / monitoring / social-preview) with canonical names synthesized even where uap-core yields junk.
 - **Traffic-quality signals** (Result v1.2, no external DB): `automation` (headless / Electron / webdriver — *undeclared* automation), `integrity` (UA vs Client Hints vs signals consistency → spoofed clients), `security` (attack payloads in the UA), `detection` provenance, plus convenience flags and a coarse `class_hash` bucket key.
 - **Hot-Swap**: Background `regexes.yaml` and `corrections.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
@@ -57,7 +78,7 @@ The point of this comparison is not to win every detection edge case — ua-pars
 
 We provide official wrappers for major languages that use the core shared library:
 
-- **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser`
+- **[Go](./clients/go)**: `go get github.com/Octanium91/ua-parser/clients/go` (the importable client package; the bare module path also resolves)
 - **[Python](./clients/python)**: Download .whl from [GitHub Releases](https://github.com/octanium91/ua-parser/releases)
 - **[Node.js](./clients/node)**: `@octanium91/ua-parser` (GitHub Packages)
 - **[Java](./clients/java)**: `com.github.Octanium91:ua-parser` (JitPack, GitHub Packages)
@@ -81,7 +102,7 @@ Each client has an **auth-free** installation path; the GitHub Packages registry
 
 | Platform    | Auth-free path | Also on (needs token) | Link |
 |-------------|----------------|-----------------------|------|
-| **Go**      | `go get github.com/Octanium91/ua-parser` | — | [Go Setup](./clients/go) |
+| **Go**      | `go get github.com/Octanium91/ua-parser/clients/go` | — | [Go Setup](./clients/go) |
 | **Node.js** | npm tarball attached to Releases | GitHub Packages (npm, `read:packages` token) | [Node.js Setup](./clients/node#installation) |
 | **Java**    | JitPack (`v`-prefixed tag) | GitHub Packages (Maven, token) | [Java Setup](./clients/java#installation) |
 | **Python**  | `.whl` from Releases | — | [Python Setup](./clients/python#installation) |
@@ -116,7 +137,7 @@ import (
 )
 
 cfg := uaparser.Config{
-    DisableAutoUpdate: false,
+    DisableAutoUpdate: false,   // set true (+ DisableCorrectionsUpdate: true) to run fully offline
     LRUCacheSize:      1000,
     // CorrectionsURL / DisableCorrectionsUpdate also available (correction layer).
 }
@@ -265,12 +286,13 @@ Signals reach the engine three ways: the `signals` field of the REST POST body, 
 | `max_touch_points` | `navigator.maxTouchPoints` | **iPad unmask** — a `Macintosh` UA with >1 touch point → iPadOS / tablet; also flips a desktop-mode Android tablet to `tablet` |
 | `webgl_renderer` | `WEBGL_debug_renderer_info` → `UNMASKED_RENDERER_WEBGL` | **Apple Silicon** — `Apple M…` on a frozen Mac UA → `arm64` (only when `Sec-CH-UA-Arch` is absent); also populates `gpu.renderer` (Android SoC tier) |
 | `webgl_vendor` | `WEBGL_debug_renderer_info` → `UNMASKED_VENDOR_WEBGL` | populates `gpu.vendor` |
+| `webdriver` | `navigator.webdriver` | sets `automation.webdriver` (Selenium / Puppeteer / Playwright) |
 | `platform` | `navigator.platform` | accepted; reserved for future rules |
 | `screen` `{w,h,dpr}` | `screen.width` / `screen.height` / `devicePixelRatio` | accepted; reserved for future rules |
 | `device_memory` | `navigator.deviceMemory` (Chromium-only, `0.25`–`8`) | accepted; coarse device-tier hint, reserved |
 | `hardware_concurrency` | `navigator.hardwareConcurrency` | accepted; coarse device-tier hint, reserved |
 
-> **Honest scope:** only `max_touch_points` and `webgl_*` change detection today (and `webgl_*` is echoed back as the `gpu` object); the other fields are accepted and reserved for future inference rules, so sending them is harmless but not yet impactful. All fields are optional. `webgl_*` is fingerprinting-adjacent — collect it only if that is acceptable for your users.
+> **Honest scope:** only `max_touch_points`, `webgl_*`, and `webdriver` change detection today (`webgl_*` is echoed back as the `gpu` object, `webdriver` feeds `automation.webdriver`); the other fields are accepted and reserved for future inference rules, so sending them is harmless but not yet impactful. All fields are optional. `webgl_*` is fingerprinting-adjacent — collect it only if that is acceptable for your users.
 
 **Collect on the page:**
 
@@ -281,6 +303,7 @@ const signals = {
     screen: { w: screen.width, h: screen.height, dpr: devicePixelRatio },
     hardware_concurrency: navigator.hardwareConcurrency,
     device_memory: navigator.deviceMemory,           // Chromium only (undefined elsewhere)
+    webdriver: navigator.webdriver === true,         // automation flag
 };
 
 // Optional GPU probe — fingerprinting-adjacent, include only if acceptable:
@@ -309,11 +332,13 @@ Native clients pass the same object as the last argument — e.g. Go `parser.Par
 
 ### Running Locally
 
-To run the server locally without Docker (the regex database is embedded, no generation step needed):
+To run the server locally without Docker (**requires Go 1.26+**; the regex database is embedded, no generation step needed):
 
 ```bash
-go run ./cmd/server/main.go
+go run ./cmd/server
 ```
+
+> **Windows Git Bash:** MSYS rewrites slash-valued env vars, so `UA_BASE_PATH=/api` becomes a Windows path and the server rejects it. Prefix such runs with `MSYS_NO_PATHCONV=1`, or use PowerShell/Docker. (Not an issue for the parse itself, only slash-prefixed env values.)
 
 ### Running with Docker
 
@@ -322,6 +347,8 @@ Pre-built multi-arch images (amd64/arm64, Alpine-based, statically linked server
 ```bash
 docker run -p 8080:8080 ghcr.io/octanium91/ua-parser:latest
 ```
+
+> The registry/image name is lowercase (`octanium91`) as container registries require; the Go module path keeps the canonical `Octanium91` casing. Both are intentional — not a typo.
 
 Or build locally:
 
@@ -450,25 +477,36 @@ The frozen UA alone says `Chrome/150.0.0.0` on `Windows NT 10.0`; the Client Hin
   "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
   "browser": { "name": "Chrome", "version": "150.0.0", "major": "150", "type": "browser" },
   "os": { "name": "Windows", "version": "10", "platform": "windows", "version_name": "Windows 10", "version_raw": "10" },
+  "device": { "model": "", "vendor": "", "type": "desktop", "form_factor": "desktop" },
   "cpu": { "architecture": "amd64", "bitness": "64" },
   "engine": { "name": "Blink", "version": "150.0.0.0" },
   "category": "desktop",
-  "is_frozen_ua": true, "is_touch_capable": false,
-  "detection": { "client_hints_used": false, "high_entropy": false, "signals_used": false }
+  "is_bot": false, "is_ai_crawler": false, "is_frozen_ua": true,
+  "is_mobile": false, "is_desktop": true, "is_touch_capable": false,
+  "is_chrome_family": true, "is_apple_silicon": false,
+  "automation": { "headless": false, "electron": false, "webdriver": false },
+  "integrity": { "spoofed": false, "reasons": [] },
+  "security": { "suspicious": false },
+  "detection": { "client_hints_used": false, "high_entropy": false, "signals_used": false },
+  "class_hash": "5b21517b9f08b503"
 }
 ```
 
-Same machine, different answer: **Windows 10 not 11** (the frozen UA can't tell them apart without Client Hints), a generic `150.0.0` version, no touch, and the `gpu` key is omitted entirely (nothing to populate it). **`detection` makes the input quality explicit** — `client_hints_used`/`signals_used`/`high_entropy` are all `false`, so a consumer immediately knows this result is a best-effort UA-only guess, not a CH-backed reading.
+Same machine, different answer: **Windows 10 not 11** (the frozen UA can't tell them apart without Client Hints), a generic `150.0.0` version, no touch, and the `bot`/`gpu` keys are omitted entirely (nothing to populate them — they are the only `omitempty` fields; everything else is always present). **`detection` makes the input quality explicit** — `client_hints_used`/`signals_used`/`high_entropy` are all `false`, so a consumer immediately knows this result is a best-effort UA-only guess, not a CH-backed reading.
 
-Field groups added in **Result v1.2** (all derived locally — no external DB):
+> **What `is_frozen_ua` means.** Since ~Chrome 110, Chromium *reduces* the User-Agent to a fixed template that deliberately hides detail: the browser version is frozen to `MAJOR.0.0.0`, Windows is always `Windows NT 10.0`, macOS always `Intel Mac OS X 10_15_7`, Android always `Android 10; K`, and the arch always claims x64. The real build, Win10-vs-11, true macOS/Android version, device model, and CPU architecture then live **only in Client Hints**. `is_frozen_ua: true` is the heads-up that the UA is a template — trust Client Hints (or signals) over it. It's exactly why the two examples above disagree: the frozen UA alone yields Windows 10 / `150.0.0`, while the Client Hints promote it to Windows 11 / `150.0.7871.182`. Pair it with `detection`: `is_frozen_ua: true` **and** `client_hints_used: false` means the specifics are unreliable — request `Accept-CH` from that client.
+
+Enrichment &amp; derived fields beyond the base browser/OS/device/engine (all computed locally — **no external DB**):
 
 | Group | Fields | Purpose |
 |---|---|---|
+| `is_frozen_ua` | — | UA is a reduced/frozen template (see the note above) — trust Client Hints over it |
 | Convenience | `is_mobile`, `is_desktop`, `is_touch_capable`, `is_chrome_family`, `is_apple_silicon` | ready booleans for common branching |
 | `automation` | `headless`, `electron`, `webdriver` | **undeclared** automation (unlike `is_bot`) — headless browsers, Electron shells, Selenium/Puppeteer |
 | `integrity` | `spoofed`, `reasons[]` | cross-checks UA vs Client Hints vs signals for contradictions (spoofed clients) |
 | `security` | `suspicious`, `category` | attack payloads in the UA (scanners, SQL-injection, XSS) |
 | `detection` | `client_hints_used`, `high_entropy`, `signals_used` | **input provenance** — which richer inputs were actually present (all `false` on a UA-only parse) |
+| `bot` | `name`, `category`, `vendor` | classified identity for bots (`null` for humans); see [Bot & AI Crawler Detection](#bot--ai-crawler-detection) |
 | `gpu` | `vendor`, `renderer` | present **only when a WebGL signal was supplied** (`webgl_vendor`/`webgl_renderer`); source of Apple-Silicon / Android-SoC inference |
 | `os.version_name` / `os.version_raw` | — | human label (`macOS Sonoma`) and exact CH version (`19.0.0` behind Windows `11`) |
 | `class_hash` | — | stable hash of the client-**class** tuple (same for every client of the same class); an analytics bucket key — deliberately coarse, **not** a per-user/device tracking fingerprint |
@@ -491,7 +529,7 @@ The parser includes a dedicated logic to detect common bots and AI-related crawl
 - **General Bots**: Googlebot, Bingbot, YandexBot, etc.
 - **AI Crawlers**: GPTBot, ClaudeBot, PerplexityBot, Google-Extended, and more.
 - **Categorization**: Automatically sets `Category: "bot"` and `Browser.Type: "bot"` for identified automated agents.
-- **Classified identity**: every bot result carries `bot: {name, category, vendor}` — AI agents are tagged `training` / `search` / `user-fetch` / `agent` per the vendor's own documentation (robots-policy and billing decisions need more than a boolean), classic automation as `search-crawler` / `seo` / `monitoring` / `social-preview`.
+- **Classified identity**: every bot result carries `bot: {name, category, vendor}`. AI agents are tagged `training` / `search` / `user-fetch` / `agent` / `other` per the vendor's own documentation (robots-policy and billing decisions need more than a boolean); classic automation as `search-crawler` / `seo` / `monitoring` / `social-preview`.
 
 ## Correction Layer
 
@@ -499,7 +537,7 @@ A declarative override config, [pkg/core/resources/corrections.yaml](./pkg/core/
 
 - Rules are **matched behind cheap substring gates** (near-zero cost on mainstream traffic, hard cap 64 rules) and applied **after Client Hints** — corrections are terminal, but fill-gap guards ensure genuine CH data is never overwritten.
 - The file is **embedded at build time and hot-swapped at runtime** with full validation: schema check, RE2 compilation, per-rule inline tests executed through the real pipeline before every swap; any failure keeps the last good rules.
-- **Every mode gets live rules**: native builds fetch it on the update tick; the browser WASM build fetches it once at `initUA` (Fetch-backed `net/http`); the WASI fallback engines receive it from their Java/Node hosts via the `updateCorrections` export.
+- **Every mode gets live rules**: native builds fetch it once at startup and again on every update tick; the browser WASM build fetches it once at `initUA` (Fetch-backed `net/http`); the WASI fallback engines receive it from their Java/Node hosts via the `updateCorrections` export.
 - Every rule carries its own test corpus and an upstream link; a dead-rule lint in CI forces deleting rules once upstream uap-core catches up. Design details: [docs/correction-layer.md](./docs/correction-layer.md).
 
 ## Shared Library (C-FFI)

@@ -4,11 +4,21 @@ This is the Node.js wrapper for the high-performance Universal User-Agent Parser
 
 ## Installation
 
-The package is hosted on **GitHub Packages**. GitHub Packages requires authentication for **every** install — including public packages — so you need a GitHub Personal Access Token even though this repository is public. (See [Alternative: install without a token](#alternative-install-without-a-token) below if you cannot use one.)
+> **No GitHub token? Use the auth-free tarball → jump to [Install without a token](#alternative-install-without-a-token).** The GitHub Packages path below needs a token because GitHub authenticates **every** package install, even for public repos.
+>
+> Either way you must install the **published package or release tarball**, not a git clone — the native drivers and WASM modules ship inside those, not in the git tree (`lib/` in git holds only `index.js`), so `npm install` in a checkout gives a driver-less package and `init()` throws `Shared library not found`.
+
+The package is hosted on **GitHub Packages**, which requires authentication for every install — including public packages.
 
 ### 1. Create a token
 
-Create a GitHub **Personal Access Token (classic)** with the `read:packages` scope: <https://github.com/settings/tokens>. Export it, e.g. `export GITHUB_TOKEN=ghp_xxx`.
+Create a GitHub **Personal Access Token (classic)** with the `read:packages` scope: <https://github.com/settings/tokens>. Set it as `GITHUB_TOKEN` in your shell:
+
+```bash
+export GITHUB_TOKEN=ghp_xxx        # bash / zsh
+# PowerShell:  $env:GITHUB_TOKEN = "ghp_xxx"
+# cmd.exe:     set GITHUB_TOKEN=ghp_xxx
+```
 
 ### 2. Configure the registry and auth
 
@@ -276,51 +286,45 @@ The `parse()` method returns a detailed object:
 
 ```json
 {
+  "result_version": "1.2",
   "ua": "Mozilla/5.0 ...",
-  "browser": {
-    "name": "Chrome",
-    "version": "119.0.6045.105",
-    "major": "119",
-    "type": "browser"
-  },
-  "os": {
-    "name": "Windows",
-    "version": "11",
-    "platform": "windows"
-  },
-  "device": {
-    "model": "Pixel 5",
-    "vendor": "Google",
-    "type": "mobile",
-    "form_factor": "mobile"
-  },
-  "cpu": {
-    "architecture": "arm64",
-    "bitness": "64"
-  },
-  "engine": {
-    "name": "Blink",
-    "version": "119.0.6045.105"
-  },
+  "browser": { "name": "Chrome", "version": "126.0.6478.61", "major": "126", "type": "browser" },
+  "os": { "name": "Android", "version": "14", "platform": "android", "version_name": "Android 14", "version_raw": "14" },
+  "device": { "model": "Pixel 8", "vendor": "Google", "type": "mobile", "form_factor": "mobile" },
+  "cpu": { "architecture": "arm64", "bitness": "64" },
+  "engine": { "name": "Blink", "version": "126.0.6478.61" },
   "category": "mobile",
-  "is_bot": false,
-  "is_ai_crawler": false,
-  "is_frozen_ua": false,
-  "bot": null,
-  "gpu": null
+  "is_bot": false, "is_ai_crawler": false, "is_frozen_ua": true,
+  "is_mobile": true, "is_desktop": false, "is_touch_capable": true,
+  "is_chrome_family": true, "is_apple_silicon": false,
+  "automation": { "headless": false, "electron": false, "webdriver": false },
+  "integrity": { "spoofed": false, "reasons": [] },
+  "security": { "suspicious": false },
+  "detection": { "client_hints_used": true, "high_entropy": true, "signals_used": false },
+  "class_hash": "9a1c0f5e2b7d4e83"
 }
 ```
 
-Field notes (added in Result v1.1):
+> `bot` and `gpu` are the only **optional** keys — they are present only for bots and when a WebGL signal was supplied, and **omitted entirely** otherwise (check with `if (result.bot)`, not `result.bot === null`). Every other field is always present.
+
+Field notes (the full [root-README reference](../../README.md#example-response) has the complete table):
 
 | Field | Description |
 |-------|-------------|
+| `result_version` | Version of the result JSON shape (e.g. `"1.2"`) — traceability for stored results. |
 | `os.platform` | Canonical machine-readable OS key: `windows`, `macos`, `ios`, `android`, `chromeos`, `linux`, `tizen`, `playstation`, `other`. `os.name` keeps the marketing spelling. |
+| `os.version_name` / `os.version_raw` | Human label (`macOS Sonoma`, `Windows 11`) and the exact CH version (`19.0.0` behind Windows `11`). |
 | `device.form_factor` | `desktop` / `mobile` / `tablet` / `watch` / `xr` / `automotive` / `tv` (from `Sec-CH-UA-Form-Factors` when present, else derived from `type`). |
 | `cpu.bitness` | `"64"`, `"32"`, or `""`. |
 | `is_frozen_ua` | `true` when the UA is a frozen/reduced template (Chromium reduced UA, `Android 10; K`, capped `Mac OS X 10_15_7`) — a hint to trust Client Hints over the UA. |
-| `bot` | `null` for humans; for bots `{ "name", "category", "vendor" }` where category is `training` / `search` / `user-fetch` / `agent` (AI) or `search-crawler` / `seo` / `monitoring` / `social-preview` (classic). |
-| `gpu` | `null` unless a WebGL signal was supplied; then `{ "vendor", "renderer" }`. |
+| `is_mobile` / `is_desktop` / `is_touch_capable` / `is_chrome_family` / `is_apple_silicon` | Convenience booleans for common branching. |
+| `automation` | `{ headless, electron, webdriver }` — **undeclared** automation (unlike `is_bot`). |
+| `integrity` | `{ spoofed, reasons[] }` — UA vs Client Hints vs signals consistency (spoofed clients). |
+| `security` | `{ suspicious, category }` — attack payloads in the UA (scanners, SQL-injection, XSS). |
+| `detection` | `{ client_hints_used, high_entropy, signals_used }` — which richer inputs were present (all `false` on a UA-only parse). |
+| `class_hash` | Stable hash of the client **class** — an analytics bucket key, identical for every client of the same class. Deliberately coarse, **not** a tracking fingerprint. |
+| `bot` | **omitted** for humans; for bots `{ "name", "category", "vendor" }` where category is `training` / `search` / `user-fetch` / `agent` / `other` (AI) or `search-crawler` / `seo` / `monitoring` / `social-preview` (classic). |
+| `gpu` | **omitted** unless a WebGL signal was supplied; then `{ "vendor", "renderer" }`. |
 
 Example bot result:
 
@@ -340,20 +344,26 @@ The package supports WebAssembly and is compatible with modern bundlers like Web
 
 ### Modern Bundlers (React, Vue, Vite, Webpack)
 
-When using a bundler, the parser automatically attempts to resolve `wasm_exec.js` and `ua-parser-js.wasm` assets. You can use it directly without manual setup:
+In the browser the parser runs the `ua-parser-js.wasm` module via Go's `wasm_exec.js`. Bundlers **do not** turn a bare `.wasm` import into a servable URL automatically, so you must (a) make sure both `ua-parser-js.wasm` and `wasm_exec.js` are emitted/served, and (b) hand the wasm URL to the parser. Pass the URL to the constructor — `new UaParser(wasmUrl)` — or, if you omit it, the parser fetches `/ua-parser-js.wasm` from the site root (so serving both files at the web root also works).
+
+**Vite** — import the wasm as a URL and load `wasm_exec.js` once:
 
 ```javascript
 import { UaParser } from '@octanium91/ua-parser';
+import wasmUrl from '@octanium91/ua-parser/lib/ua-parser-js.wasm?url';
+import '@octanium91/ua-parser/lib/wasm_exec.js'; // defines globalThis.Go
 
-async function init() {
-    const parser = new UaParser();
+async function detect() {
+    const parser = new UaParser(wasmUrl);   // pass the resolved wasm URL
     await parser.init();
-
-    // Recommended: Use User-Agent provided by your server
-    const result = parser.parse(window.__UA__); 
+    const result = parser.parse(navigator.userAgent);   // + server Client Hints when available
     console.log(result);
 }
 ```
+
+**Webpack 5** — emit the wasm as an asset (`type: 'asset/resource'` for `.wasm`, or `new URL('.../ua-parser-js.wasm', import.meta.url)`) and pass that URL to `new UaParser(url)`; load `wasm_exec.js` the same way.
+
+> The `.wasm` must be served with `Content-Type: application/wasm` (required by `WebAssembly.instantiateStreaming`); most static hosts and dev servers do this by default. If yours doesn't, either fix the MIME type or the loader falls back to `arrayBuffer` instantiation.
 
 ### Manual Setup (Vanilla JS / CDN)
 
@@ -401,12 +411,15 @@ function App() {
 
   useEffect(() => {
     async function parse() {
-      const parser = new UaParser();
+      const parser = new UaParser(wasmUrl);  // wasmUrl imported as above
       await parser.init();
-      
-      // Use hints and UA injected by server
-      const hints = window.__CH_HEADERS__;
-      const ua = window.__UA__;
+
+      // Server-injected UA + Client Hints when present; fall back to the
+      // browser's own UA so this still works without server injection.
+      // (parse(undefined) does NOT throw — it silently parses an empty UA,
+      //  so always provide a real UA string.)
+      const ua = window.__UA__ ?? navigator.userAgent;
+      const hints = window.__CH_HEADERS__ ?? {};
 
       setResult(parser.parse(ua, hints));
     }
@@ -420,6 +433,10 @@ function App() {
   );
 }
 ```
+
+## TypeScript
+
+Bundled type declarations aren't shipped yet, so TypeScript sees the client as `any`. The surface is small — `new UaParser(libPath?)`, `init(config?)`, `parse(ua, headers?, signals?)` — and the returned object matches the [Result Object Structure](#result-object-structure) above; declare a local `interface` from that shape if you want typing today.
 
 ## Why Koffi?
 

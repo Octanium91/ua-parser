@@ -299,6 +299,13 @@ public class UaParser {
         pusher.start();
     }
 
+    /** Screen geometry signal ({w, h, dpr}). */
+    public static class ScreenInfo {
+        public int w;
+        public int h;
+        public double dpr;
+    }
+
     /** Optional browser-side evidence beyond headers (see the README). */
     public static class Signals {
         @SerializedName("max_touch_points")
@@ -308,10 +315,13 @@ public class UaParser {
         public String webglVendor;
         @SerializedName("webgl_renderer")
         public String webglRenderer;
+        public ScreenInfo screen;
         @SerializedName("device_memory")
         public double deviceMemory;
         @SerializedName("hardware_concurrency")
         public int hardwareConcurrency;
+        /** navigator.webdriver — feeds automation.webdriver. */
+        public boolean webdriver;
     }
 
     /**

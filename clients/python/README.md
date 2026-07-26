@@ -4,16 +4,18 @@ This is the Python wrapper for the high-performance Universal User-Agent Parser.
 
 ## Installation
 
+> ⚠️ **Not on PyPI.** Do **not** run `pip install ua-parser` or `pip install ua-parser-core` — `ua-parser` on PyPI is an **unrelated** project and will install the wrong package (after which `from uaparser import UaParser` fails). This parser ships only as a wheel attached to GitHub Releases; install it as shown below.
+
 This package is distributed via GitHub Releases.
 
-1.  Go to the [Releases Page](https://github.com/Octanium91/ua-parser/releases).
-2.  Download the wheel from the latest release — it is named `ua_parser_core-<VERSION>-py3-none-any.whl` (for example `ua_parser_core-0.0.48-py3-none-any.whl`).
-3.  Install it using pip (substitute the version you downloaded):
+1.  Go to the [Releases Page](https://github.com/Octanium91/ua-parser/releases) and note the latest version.
+2.  Download the wheel — it is named `ua_parser_core-<VERSION>-py3-none-any.whl`.
+3.  Install it using pip with the **exact filename** you downloaded (don't rely on a `*` wildcard — it isn't expanded on Windows cmd/PowerShell):
     ```bash
-    pip install ./ua_parser_core-*.whl
+    pip install ./ua_parser_core-0.0.51-py3-none-any.whl
     ```
 
-> **Note**: The package automatically includes the required native binaries for Windows, Linux, and macOS (amd64 and arm64). The distribution name on PyPI-style tooling is `ua-parser-core`, but the import name is `uaparser` (i.e. `from uaparser import UaParser`).
+> **Note**: Install the **released wheel**, not a source checkout — only release wheels bundle the native driver. `pip install .` on a clone produces a driver-less package and `UaParser()` then raises `FileNotFoundError`. The release wheel automatically includes the native binaries for Windows, Linux, and macOS (amd64 and arm64). The distribution name is `ua-parser-core`, but the **import** name is `uaparser` (i.e. `from uaparser import UaParser`).
 
 ## Alpine Linux / musl
 
@@ -69,10 +71,13 @@ result = parser.parse(ua, headers, signals={
 
 Priority inside the engine: **Client Hints > signals > UA string**.
 
-The parse result is a plain `dict`, so every field — including the Result v1.1
-additions `os.platform`, `device.form_factor`, `cpu.bitness`, `is_frozen_ua`,
-`bot` (`{name, category, vendor}`, absent/`None` for humans) and `gpu` — is
-available directly. Full field semantics: [root README](../../README.md#example-response).
+The parse result is a plain `dict`, so **every** field is available directly —
+including `result_version`, `os.platform` / `os.version_name` / `os.version_raw`,
+`device.form_factor`, `cpu.bitness`, `is_frozen_ua`, the convenience flags
+(`is_mobile` / `is_desktop` / `is_touch_capable` / `is_chrome_family` /
+`is_apple_silicon`), `automation`, `integrity`, `security`, `detection`,
+`class_hash`, `bot` (`{name, category, vendor}`, absent/`None` for humans) and
+`gpu`. Full field semantics: [root README](../../README.md#example-response).
 
 ## Forwarding headers from a real request
 

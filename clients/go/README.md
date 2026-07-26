@@ -17,7 +17,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/Octanium91/ua-parser/clients/go"
+
+	// The package is named `uaparser` though its path ends in `/go`; the
+	// explicit alias makes that clear and keeps goimports/linters happy.
+	uaparser "github.com/Octanium91/ua-parser/clients/go"
 )
 
 func main() {
@@ -51,7 +54,7 @@ func main() {
 }
 ```
 
-The Go client re-exports the core types (`uaparser.Result`, `uaparser.Signals`, …), so it always exposes the full result and you never import the internal `core` package directly — see [Result fields](#result-fields) below.
+The Go client re-exports the core types (`uaparser.Result`, `uaparser.Signals`, `uaparser.Config`, `uaparser.ScreenInfo`, `uaparser.BotInfo`, `uaparser.GPUInfo`), so for constructing inputs and reading the result you never import the internal `core` package directly — see [Result fields](#result-fields) below.
 
 ## Browser signals (optional)
 
@@ -68,7 +71,17 @@ Priority inside the engine: **Client Hints > signals > UA string**.
 
 ## Result fields
 
-`Result` carries `Browser{Name,Version,Major,Type}`, `OS{Name,Version,Platform}`, `Device{Model,Vendor,Type,FormFactor}`, `CPU{Architecture,Bitness}`, `Engine{Name,Version}`, `Category`, `IsBot`, `IsAICrawler`, `IsFrozenUA`, `*Bot{Name,Category,Vendor}` (nil for humans), and `*GPU{Vendor,Renderer}` (nil unless a WebGL signal was supplied). See the [root README](../../README.md#example-response) for a full JSON example and field semantics.
+`Result` mirrors the full engine output (schema v1.2 — `ResultVersion` carries `"1.2"`):
+
+- `Browser{Name,Version,Major,Type}`, `Engine{Name,Version}`, `Category`.
+- `OS{Name,Version,Platform,VersionName,VersionRaw}`, `Device{Model,Vendor,Type,FormFactor}`, `CPU{Architecture,Bitness}`.
+- `IsBot`, `IsAICrawler`, `IsFrozenUA`.
+- Convenience: `IsMobile`, `IsDesktop`, `IsTouchCapable`, `IsChromeFamily`, `IsAppleSilicon`.
+- `Automation{Headless,Electron,Webdriver}`, `Integrity{Spoofed,Reasons}`, `Security{Suspicious,Category}`, `Detection{ClientHintsUsed,HighEntropy,SignalsUsed}`.
+- `ClassHash` (coarse client-class bucket key, not a tracking fingerprint).
+- `*Bot{Name,Category,Vendor}` (nil for humans), `*GPU{Vendor,Renderer}` (nil unless a WebGL signal was supplied).
+
+See the [root README](../../README.md#example-response) for a full JSON example and field semantics.
 
 ## Forwarding headers from a real request
 

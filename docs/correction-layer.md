@@ -136,7 +136,8 @@ Semantics:
 ## 2. Pipeline position — corrections are terminal
 
 `Parse()` order: uap regex parse → `inferInfo` → `applyClientHints` →
-**`applyCorrections`** → category switch → cache add.
+`applySignals` → **`applyCorrections`** → category switch → `enrichResult` →
+cache add.
 
 The two designs on the table were pre-CH ("CH is browser ground truth, must
 win") and post-CH ("corrections are the last word"). **Post-CH wins** for a
@@ -299,7 +300,7 @@ P0 — ship immediately (each with corpus-proven test UA):
 | id | Fix | Upstream status |
 |---|---|---|
 | `wechat-inapp-browser` | WeChat name/version/type=inapp | open PRs #515/#613 → retires via no-op lint when merged |
-| `ai-agent-name-synthesis` | one generic rule: aiBots token + junk name (`Other`/`crawler`/URL fragment) → canonical name + `Token/(ver)` version; covers ~17 tokens incl. ChatGPT-User, Claude-User, meta-externalagent, perplexity-user, mistralai-*, kimi-user | permanent (upstream can't fix agents it doesn't list) |
+| `ai-agent-name-synthesis` **(shipped engine-native, not a YAML rule — see Deviations)** | aiBots token + junk name (`Other`/`crawler`/URL fragment) → canonical name + `Token/(ver)` version; covers ~17 tokens incl. ChatGPT-User, Claude-User, meta-externalagent, perplexity-user, mistralai-*, kimi-user | permanent (upstream can't fix agents it doesn't list) |
 | `tesla-vehicle` | vendor=Tesla, device.type=automotive → category automotive | absent upstream — also file an uap-core PR |
 | `playstation-os` | `PlayStation (\d)/` → os PlayStation N | upstream issue #276 stale |
 | `xbox-device` | vendor=Microsoft, model=`Xbox $1` (UA token frozen at "One" — approximate) | ancient patterns only |
@@ -318,7 +319,7 @@ MediaPlayers/Emails/CLIs categories (features, not corrections), Edge WebView2
 (no stable token), non-Tesla vehicles (no traffic, and the known model-code
 tables edge toward AGPL copying).
 
-Budget: ~13 of the 64-rule cap. New rules require a compare-harness divergence
+Budget: 15 of the 64-rule cap (+ 19 vendor-prefix rows). New rules require a compare-harness divergence
 or real-traffic evidence; per-model granularity is auto-rejected.
 
 ## 10. Maintenance policy
@@ -329,13 +330,17 @@ or real-traffic evidence; per-model granularity is auto-rejected.
    unchanged → open the upstream PR; the weekly sync delivers the fix and the
    no-op lint then forces the rule's deletion. Corrections are temporary by
    design; the lint is the forcing function against dead weight.
-3. Vendor table capped at ~20 rows; file at 64 rules (engine-enforced).
+3. Vendor table capped at 24 rows; file at 64 rules (engine-enforced).
 
-## 11. Result schema v1.1 — richer output (additive)
+## 11. Result schema — richer output (additive; v1.1 → v1.2)
 
 All additions are new JSON fields: Python/Node clients (dynamic) get them for
 free; Java's Gson and Go consumers ignore unknown fields until their structs
-are updated — no breaking change, no client lockstep.
+are updated — no breaking change, no client lockstep. Every result also carries
+`result_version` (`ResultSchemaVersion`, currently `"1.2"`) so stored results
+stay traceable to the format that produced them.
+
+**v1.1 fields:**
 
 | Field | Type | Source | Notes |
 |---|---|---|---|
@@ -343,12 +348,24 @@ are updated — no breaking change, no client lockstep.
 | `os.platform` | canonical enum: `windows`, `macos`, `linux`, `android`, `ios`, `chromeos`, `tizen`, `playstation`, `other` | normalized from os.name | stable key for analytics; os.name stays the marketing name |
 | `device.form_factor` | `desktop`/`mobile`/`tablet`/`xr`/`watch`/`automotive`/`tv`/`""` | `Sec-CH-UA-Form-Factors`, else derived from device.type | exposes the CH value we already parse but discard after using |
 | `is_frozen_ua` | bool | UA matches known frozen/reduced patterns (Chrome ≥110 reduced UA, Mac 10_15_7, Android 10; K) | tells consumers "trust CH, the UA lies" |
-| `bot` | `{name, category, vendor}` or `null` | materializes the tags already curated in the aiBots list (`training`, `search`, `user-fetch`, `agent`) + classic classes (`search-crawler`, `seo`, `monitoring`, `http-library`) | the differentiator: `is_bot`/`is_ai_crawler` booleans stay for compat, `bot.category` enables robots-policy/billing decisions |
+| `bot` | `{name, category, vendor}` or `null` | materializes the aiBots tags (`training`/`search`/`user-fetch`/`agent`/`other`) + classic classes (`search-crawler`/`seo`/`monitoring`/`social-preview`) | `is_bot`/`is_ai_crawler` booleans stay for compat; `bot.category` enables robots-policy/billing decisions |
 | `gpu` | `{vendor, renderer}` or `null` | only when the client supplies a WebGL signal (section 12) | pass-through + used internally for Apple-Silicon/SoC inference |
 
-Corrections `set` vocabulary grows the matching keys (`bot_category`,
-`form_factor`, …). Explicitly rejected: `confidence` scores (unfalsifiable),
-marketing OS version names, SoC model guessing without a client signal.
+**v1.2 fields (traffic quality, all local — no DB):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `is_mobile` / `is_desktop` / `is_touch_capable` / `is_chrome_family` / `is_apple_silicon` | bool | convenience classifications |
+| `os.version_name` / `os.version_raw` | string | human label (`macOS Sonoma`) and exact CH version (`19.0.0` behind Windows `11`) |
+| `automation` | `{headless, electron, webdriver}` | **undeclared** automation (unlike `is_bot`) |
+| `integrity` | `{spoofed, reasons[]}` | UA vs Client Hints vs signals consistency |
+| `security` | `{suspicious, category}` | attack payloads in the UA (scanners, SQLi, XSS) |
+| `detection` | `{client_hints_used, high_entropy, signals_used}` | input provenance — which richer inputs were present |
+| `class_hash` | string | stable hash of the client-**class** tuple — a coarse analytics bucket key, **not** a per-user tracking fingerprint |
+
+Explicitly rejected: `confidence` scores (unfalsifiable) and SoC model guessing
+without a client signal. `class_hash` is deliberately named to avoid the
+tracking-"fingerprint" connotation.
 
 ## 12. Extended client signals (beyond Sec-CH-UA headers)
 
