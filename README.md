@@ -1,6 +1,6 @@
 # Universal User-Agent Parser
 
-A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client Hints) support and automatic regex updates.
+A high-performance, cross-platform User-Agent parser: one Go core exposed to **Go, Java, Node.js, and Python** (plus a REST microservice and WebAssembly), with Client Hints support, bot/AI-crawler classification, and a **runtime-updated regex database and correction layer** — so detection stays fresh without redeploying.
 
 ## Features
 
@@ -21,7 +21,7 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
 
 ## Comparison with popular alternatives
 
-Measured against the most popular parser in each ecosystem: [ua-parser-js](https://uaparser.dev/) v2 (JavaScript), [Yauaa](https://yauaa.basjes.nl/) and [uap-java](https://github.com/ua-parser/uap-java) (Java), [uap-python](https://github.com/ua-parser/uap-python) (Python). Every row runs the same 50-UA corpus (desktop/mobile, Client Hints cases, bots, AI crawlers) single-threaded, full pipeline where the library supports it; our client rows go through the real published drivers (JNA / koffi / ctypes → Go shared library). All numbers are reproducible with the harness in [`tools/compare`](./tools/compare).
+Measured against the most popular parser in each ecosystem: [ua-parser-js](https://uaparser.dev/) v2 (JavaScript), [Yauaa](https://yauaa.basjes.nl/) and [uap-java](https://github.com/ua-parser/uap-java) (Java), [uap-python](https://github.com/ua-parser/uap-python) (Python). Every row runs the same 52-UA corpus (desktop/mobile, Client Hints cases, bots, AI crawlers) single-threaded, full pipeline where the library supports it; our client rows go through the real published drivers (JNA / koffi / ctypes → Go shared library). All numbers are reproducible with the harness in [`tools/compare`](./tools/compare).
 
 | Solution | Runtime | Init | Throughput, uncached | Cache hits² | Settled RSS | Result detail | Client Hints | Bot/AI flags | Data updates | License |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -43,7 +43,7 @@ Measured against the most popular parser in each ecosystem: [ua-parser-js](https
 
 Environment: AMD Ryzen AI Max+ 395, Windows 11, single thread. The Go core additionally scales across cores under concurrent load; Node and CPython parse on a single thread per process, and a Yauaa analyzer instance is synchronized (parallel throughput requires multiple instances).
 
-The point of this comparison is not to win every detection edge case — ua-parser-js resolves some exotics (in-app browsers, vehicle browsers, device vendor mapping) more precisely, and Yauaa derives the most fields per agent. The point is that this is **one engine, everywhere**: byte-identical results in Go, Java, Node.js, and Python, or as a drop-in Docker/REST microservice next to any stack — with a regex database ([uap-core](https://github.com/ua-parser/uap-core)) that **hot-swaps in the background without a redeploy**, while every alternative ships detection updates as package releases you have to roll out. On mainstream traffic the detection results agree with ua-parser-js anyway (browser/OS/engine/versions, Windows 11 via Client Hints, Brave/Opera GX via `Sec-CH-UA` brands, all major search bots and AI crawlers); a full side-by-side diff on the shared corpus is one `report.mjs` run away in [`tools/compare`](./tools/compare).
+The point of this comparison is not to win every detection edge case — ua-parser-js resolves some exotics (vehicle browsers, some device vendor mapping) more precisely, and Yauaa derives the most fields per agent. The point is that this is **one engine, everywhere**: byte-identical results in Go, Java, Node.js, and Python, or as a drop-in Docker/REST microservice next to any stack — with a regex database ([uap-core](https://github.com/ua-parser/uap-core)) that **hot-swaps in the background without a redeploy** (plus the [correction layer](#correction-layer) that closes gaps uap-core hasn't), while every alternative ships detection updates as package releases you have to roll out. On mainstream traffic the detection results agree with ua-parser-js anyway (browser/OS/engine/versions, Windows 11 via Client Hints, Brave/Opera GX via `Sec-CH-UA` brands, all major search bots and AI crawlers); a full side-by-side diff on the shared corpus is one `report.mjs` run away in [`tools/compare`](./tools/compare).
 
 ### When to pick which
 
@@ -108,7 +108,11 @@ Our Java client is designed to provide a significantly lower memory footprint an
 ## Go Library Usage
 
 ```go
-import "github.com/Octanium91/ua-parser/clients/go"
+import (
+    "fmt"
+
+    uaparser "github.com/Octanium91/ua-parser/clients/go"
+)
 
 cfg := uaparser.Config{
     DisableAutoUpdate: false,
@@ -118,10 +122,11 @@ cfg := uaparser.Config{
 
 parser, _ := uaparser.New(cfg)
 
-// Headers for Client Hints (optional)
+// Headers for Client Hints (optional). Pass values raw — quotes included,
+// exactly as the browser sends them (the parser strips the quotes itself).
 headers := map[string]string{
-    "Sec-CH-UA-Platform":         "Windows",
-    "Sec-CH-UA-Platform-Version": "15.0.0",
+    "Sec-CH-UA-Platform":         "\"Windows\"",
+    "Sec-CH-UA-Platform-Version": "\"15.0.0\"",
 }
 
 result := parser.Parse("Mozilla/5.0...", headers)
@@ -137,7 +142,7 @@ if result.Bot != nil {
 }
 
 // Optional browser signals (Safari/Firefox send no Client Hints):
-//   result = parser.ParseFull(ua, headers, &core.Signals{MaxTouchPoints: 5})
+//   result = parser.ParseFull(ua, headers, &uaparser.Signals{MaxTouchPoints: 5})
 ```
 
 ## Supported Client Hints Headers
@@ -179,7 +184,7 @@ Critical-CH: Sec-CH-UA-Platform-Version, Sec-CH-UA-Model
 The parser is only as accurate as the headers you hand it. The golden rule for every backend client: **don't enumerate individual headers — copy the `User-Agent` plus every request header whose name starts with `Sec-CH-` into the headers map.** New hints the engine learns in future versions then flow through automatically, with no integrator changes.
 
 - Header names are case-insensitive (the engine normalizes them); pass values **raw, quotes included** (`Sec-CH-UA-Platform: "Windows"` — don't strip the quotes).
-- Also forward **`X-Requested-With`** when present: Android WebView sends the embedding app's package id (`com.tencent.mm` → WeChat) — a precise in-app browser signal consumed by the upcoming correction layer ([design](./docs/correction-layer.md)); harmless to forward today.
+- Also forward **`X-Requested-With`** when present: Android WebView sends the embedding app's package id (`com.tencent.mm` → WeChat, `com.instagram.android` → Instagram) — a precise in-app browser signal the [correction layer](#correction-layer) consumes to identify the host app.
 - If you cache parse results on your side, your cache key must include every forwarded header (the built-in LRU cache already handles this internally).
 
 **Go**

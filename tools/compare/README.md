@@ -2,7 +2,7 @@
 
 Reproducible harness behind the "Comparison with popular alternatives" section
 of the root README. All parsers run the same corpus ([corpus.json](./corpus.json),
-50 entries: desktop/mobile browsers, Client Hints cases, bots, AI crawlers,
+52 entries: desktop/mobile browsers, Client Hints cases, bots, AI crawlers,
 HTTP tools) in their strongest server-side configuration:
 
 - **ua-parser (this project)**: the Go core (`core.Parser.Parse(ua, headers)` —
@@ -92,7 +92,7 @@ Node harnesses report `process.memoryUsage().rss`.
 
 Benchmark methodology notes:
 
-- Both sides parse the same 50-entry corpus round-robin, full pipeline per
+- Both sides parse the same 52-entry corpus round-robin, full pipeline per
   iteration, after a warmup pass; both are single-threaded (the Go core
   additionally scales across cores under concurrent load, the Node library is
   single-threaded per process).

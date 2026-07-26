@@ -51,14 +51,14 @@ func main() {
 }
 ```
 
-The Go client re-exports the core types (`Result = core.Result`), so it always exposes the full result — see [Result fields](#result-fields) below.
+The Go client re-exports the core types (`uaparser.Result`, `uaparser.Signals`, …), so it always exposes the full result and you never import the internal `core` package directly — see [Result fields](#result-fields) below.
 
 ## Browser signals (optional)
 
-`ParseFull(ua, headers, *core.Signals)` accepts browser-side evidence that UA and Client Hints can't provide (Safari/Firefox send no Client Hints). `Parse` is `ParseFull` with `nil` signals.
+`ParseFull(ua, headers, *uaparser.Signals)` accepts browser-side evidence that UA and Client Hints can't provide (Safari/Firefox send no Client Hints). `Parse` is `ParseFull` with `nil` signals.
 
 ```go
-result := parser.ParseFull(ua, headers, &core.Signals{
+result := parser.ParseFull(ua, headers, &uaparser.Signals{
     MaxTouchPoints: 5,            // unmasks iPads reporting a desktop (Mac) UA
     WebGLRenderer:  "Apple M2",   // Apple Silicon / Android SoC
 })

@@ -83,10 +83,11 @@ async function start() {
     await parser.init();
 
     http.createServer((req, res) => {
-        // Simply pass the request headers object.
-        // The parser automatically looks for 'sec-ch-ua-*' keys, and future
-        // signals (e.g. x-requested-with for in-app detection) flow through
-        // automatically — see the backend forwarding guide in the root README.
+        // Simply pass the request headers object. The parser reads the
+        // 'sec-ch-ua-*' keys and 'x-requested-with' (Android WebView in-app
+        // detection) — passing the whole headers object means new signals
+        // flow through with no code change. See the backend forwarding guide
+        // in the root README.
         const result = parser.parse(req.headers['user-agent'], req.headers);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -198,9 +199,11 @@ If you cannot modify the HTML (e.g., when serving from a static CDN), fetch the 
 
 ### Alternative: Client-side (SPA)
 
-> **⚠️ STRICTLY NOT RECOMMENDED**: This method is discouraged for production use. Relying on the `navigator.userAgentData` API is less reliable than server-side headers, may be blocked by privacy settings, and adds asynchronous complexity. Use the **Server-Side (Nginx)** approach whenever possible.
+> **Note**: In the browser (WASM) build the engine **already collects** the high-entropy Client Hints and browser signals for you at `init()` (see [Browser signals](#browser-signals-optional)) — you usually don't need the manual code below. It remains valid if you want explicit control or must override what was collected.
 
-If you must collect high-entropy values via JS:
+> **⚠️ STRICTLY NOT RECOMMENDED**: Manually relying on the `navigator.userAgentData` API is less reliable than server-side headers, may be blocked by privacy settings, and adds asynchronous complexity. Use the **Server-Side (Nginx)** approach whenever possible.
+
+If you must collect high-entropy values via JS yourself:
 
 ```javascript
 const getClientHints = async () => {
