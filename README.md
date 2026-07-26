@@ -16,6 +16,39 @@ A high-performance User-Agent parser written in Go, featuring Sec-CH-UA (Client 
 - **Embedded**: Core regex patterns are bundled into the binary using `go:embed`.
 - **CI/CD**: Fully automated builds and multi-platform distribution (GitHub Packages, GHCR) via **GitHub Actions**.
 
+## Comparison with popular alternatives
+
+Measured against the most popular parser in each ecosystem: [ua-parser-js](https://uaparser.dev/) v2 (JavaScript), [Yauaa](https://yauaa.basjes.nl/) and [uap-java](https://github.com/ua-parser/uap-java) (Java), [uap-python](https://github.com/ua-parser/uap-python) (Python). Every row runs the same 50-UA corpus (desktop/mobile, Client Hints cases, bots, AI crawlers) single-threaded, full pipeline where the library supports it; our client rows go through the real published drivers (JNA / koffi / ctypes → Go shared library). All numbers are reproducible with the harness in [`tools/compare`](./tools/compare).
+
+| Solution | Runtime | Init | Throughput, uncached | Cache hits² | Settled RSS | Result detail | Client Hints | Bot/AI flags | Data updates | License |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **This solution — Go core** | Go 1.26 | ~0.1 s | **78,500 ops/s** (12.7 µs) | 2,010,000 ops/s | ~88 MB | browser/engine/OS/device/CPU + category + bot/AI | ✅ | ✅ | **hot-swap at runtime** | Apache 2.0 |
+| **This solution — Node.js client** | Node 20 | 0.07 s | **62,100 ops/s** (16.1 µs) | ¹ | ~79 MB | same (identical core) | ✅ | ✅ | **hot-swap at runtime** | Apache 2.0 |
+| **This solution — Java client** | JVM 17 | 0.4 s | **58,900 ops/s** (17.0 µs) | ¹ | ~106 MB | same (identical core) | ✅ | ✅ | **hot-swap at runtime** | Apache 2.0 |
+| **This solution — Python client** | CPython 3.14 | 0.1 s | **53,100 ops/s** (18.8 µs) | ¹ | ~57 MB | same (identical core) | ✅ | ✅ | **hot-swap at runtime** | Apache 2.0 |
+| ua-parser-js 2.0.10 | Node 20 | ~0 | 5,300 ops/s (187 µs) | — (no cache) | ~78 MB | browser/engine/OS/device/CPU + agent-type taxonomy | ✅ | ✅ | package release | AGPLv3 or paid PRO³ |
+| Yauaa 8.2.0 | JVM 17+ | 3.3 s | 2,200 ops/s (453 µs) | 505,000 ops/s | ~245–390 MB⁴ | ~60 fields (20–40 populated per UA) | ✅ | partial (`Robot` class, no AI flag) | package release | Apache 2.0 |
+| uap-python 1.0.2 | CPython 3.14 | 0.2 s | 1,530 ops/s⁵ (655 µs) | 462,000 ops/s | ~21 MB | UA/OS/device families | — | — | package release (monthly data snapshots) | Apache 2.0 |
+| uap-java 1.6.1 | JVM 17 | 0.3 s | 1,055 ops/s (948 µs) | opt. `CachingParser`⁶ | ~63 MB | UA/OS/device families | — | — | bundled snapshot (uap-core of May 2023)⁶ | Apache 2.0 |
+
+¹ Our clients' LRU lives in the Go core, behind the FFI/JSON boundary — even a cache hit pays the ~16–19 µs round-trip, so cached ≈ uncached. If your traffic is dominated by a few repeating UAs, put a small in-process memo in front (or use the REST server); on cold/diverse traffic the FFI clients are 25–50× faster than the in-language alternatives.
+² In-process cache hits on repeating UAs: our Go core LRU, Yauaa's Caffeine cache (default 10,000), uap-python's default S3-FIFO cache (2,000). A cache hit is a map lookup — these numbers say nothing about parsing speed on diverse traffic.
+³ ua-parser-js v1 is MIT, but Client Hints and bot/AI detection are v2-only — and v2 is AGPLv3 or a paid PRO license: $14 Personal (non-commercial use only), $29 Business (1 product), $599 Enterprise. PRO editions also advertise an enhanced device database, so detection quality differs between the AGPL and PRO builds.
+⁴ Yauaa additionally retains ~138 MB of JVM heap before the first parse; its own docs state initialization "takes 2–5 seconds and uses a few hundred MiB", and our uncached throughput matches its self-published ~0.5 ms/parse. Peak RSS for every JVM/CPython library spikes hundreds of MB above settled under sustained max load (transient allocation garbage) — settled post-GC RSS is the honest steady-state number.
+⁵ Measured on the pure-Python backend a plain `pip install ua-parser` gets. The optional native backends (`ua-parser[regex]` / `[re2]`) are ~10–20× faster uncached per the project's own docs — still UA-string-only, no Client Hints or bot flags.
+⁶ uap-java's optional `CachingParser` (LRUMap, default 1,000) is not thread-safe. The project has had no releases since Nov 2023, and its bundled regex snapshot (uap-core 0.18.0, May 2023) predates every AI crawler — GPTBot, ClaudeBot, PerplexityBot are invisible to it. A newer `regexes.yaml` can be supplied manually via `Parser(InputStream)`.
+
+Environment: AMD Ryzen AI Max+ 395, Windows 11, single thread. The Go core additionally scales across cores under concurrent load; Node and CPython parse on a single thread per process, and a Yauaa analyzer instance is synchronized (parallel throughput requires multiple instances).
+
+The point of this comparison is not to win every detection edge case — ua-parser-js resolves some exotics (in-app browsers, vehicle browsers, device vendor mapping) more precisely, and Yauaa derives the most fields per agent. The point is that this is **one engine, everywhere**: byte-identical results in Go, Java, Node.js, and Python, or as a drop-in Docker/REST microservice next to any stack — with a regex database ([uap-core](https://github.com/ua-parser/uap-core)) that **hot-swaps in the background without a redeploy**, while every alternative ships detection updates as package releases you have to roll out. On mainstream traffic the detection results agree with ua-parser-js anyway (browser/OS/engine/versions, Windows 11 via Client Hints, Brave/Opera GX via `Sec-CH-UA` brands, all major search bots and AI crawlers); a full side-by-side diff on the shared corpus is one `report.mjs` run away in [`tools/compare`](./tools/compare).
+
+### When to pick which
+
+- **ua-parser-js**: frontend/browser detection, JS-only stacks, minimal bundle size.
+- **Yauaa**: JVM-only stacks where maximum detection detail matters more than RAM/startup, and traffic repeats enough for its cache.
+- **uap-python / uap-java**: minimal-dependency parsing of the UA string alone, when Client Hints, bot flags, and throughput don't matter.
+- **This project**: polyglot backends that need identical results across services, high-throughput parsing on diverse traffic, low RAM/startup, regex updates without redeploys, a self-hosted parsing microservice, or permissive licensing for Client Hints + bot/AI detection.
+
 ## Client Libraries
 
 We provide official wrappers for major languages that use the core shared library:

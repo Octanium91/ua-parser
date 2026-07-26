@@ -29,3 +29,8 @@ Thumbs.db
 pkg/core/resources/regexes.json
 /clients/node/node_modules/
 /clients/node/package-lock.json
+
+# Comparison harness artifacts (tools/compare)
+/tools/compare/node/node_modules/
+/tools/compare/out/
+/tools/compare/java/target/
