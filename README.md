@@ -160,6 +160,22 @@ To achieve high accuracy (especially for Windows 11 and full browser versions), 
 | `Sec-CH-UA-Full-Version-List` | Full browser version list | Exact version (e.g., 120.0.6099.129) incl. mobile Chromium, plus the true Blink engine version from the Chromium entry |
 | `Sec-CH-UA-Form-Factors` | Device form factor (Chrome 124+) | Distinguishes tablets, watches, XR and automotive devices — Android tablets are UA-indistinguishable from phones |
 
+These are the only headers the engine reads (plus `X-Requested-With` for in-app detection — see the [correction layer](#correction-layer)). Values arrive **quoted**, exactly as the browser sends them; pass them through unchanged (the parser strips the quotes).
+
+**Example — what Chrome 126 on Windows 11 actually sends** (once the server opts in with `Accept-CH`):
+
+```http
+Sec-CH-UA: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"
+Sec-CH-UA-Mobile: ?0
+Sec-CH-UA-Platform: "Windows"
+Sec-CH-UA-Platform-Version: "15.0.0"
+Sec-CH-UA-Arch: "x86"
+Sec-CH-UA-Bitness: "64"
+Sec-CH-UA-Full-Version-List: "Not/A)Brand";v="8.0.0.0", "Chromium";v="126.0.6478.127", "Google Chrome";v="126.0.6478.127"
+```
+
+`Sec-CH-UA-Platform-Version: "15.0.0"` is how the parser reports **Windows 11** even though the UA still says `Windows NT 10.0`. The low-entropy `Sec-CH-UA`, `-Mobile`, `-Platform` are sent by default; the rest are **high-entropy** and require `Accept-CH` (below). On mobile the equivalent set carries `Sec-CH-UA-Mobile: ?1`, `Sec-CH-UA-Platform: "Android"`, and `Sec-CH-UA-Model: "Pixel 8 Pro"` (the UA model is frozen to `K`).
+
 ### Missing Headers
 If specific Client Hints are unavailable (e.g., browser policy or HTTP connection), the parser automatically falls back to standard regex-based parsing of the `User-Agent` string.
 
@@ -235,19 +251,58 @@ result = parser.parse(request.headers.get("User-Agent", ""), headers)
 
 **REST server** — same rule, headers go into the `headers` object of the POST body (see [Example Request](#example-request)).
 
-**Browser signals (optional, biggest win for Safari/Firefox traffic)** — Safari and Firefox send no `Sec-CH-UA` headers at all, but the page can still collect evidence the UA string hides. Gather this object on the page and forward it as `signals` in the parse payload (the browser WASM client collects it automatically):
+**Browser signals** — beyond headers, a page can hand the parser touch/GPU/screen evidence that the UA and Client Hints don't carry (the biggest win for Safari/Firefox, which send no Client Hints). See the [Browser Signals](#browser-signals) section below.
+
+## Browser Signals
+
+Client Hints exist **only in Chromium** — **Safari and Firefox send no `Sec-CH-UA-*` headers at all**, and Safari ships the worst UA lies (an iPad in desktop mode is byte-identical to a Mac). The optional `signals` object lets JavaScript on the page hand the parser evidence the User-Agent and Client Hints can't provide. Priority inside the engine is **Client Hints > signals > UA string** — a signal never overrides real CH data.
+
+Signals reach the engine three ways: the `signals` field of the REST POST body, the third argument of `ParseFull` / `parse(ua, headers, signals)` in the native clients, or — in the **browser WASM client** — collected automatically at `init()` (you pass nothing).
+
+| Field (JSON) | JS source | What it does today |
+|---|---|---|
+| `max_touch_points` | `navigator.maxTouchPoints` | **iPad unmask** — a `Macintosh` UA with >1 touch point → iPadOS / tablet; also flips a desktop-mode Android tablet to `tablet` |
+| `webgl_renderer` | `WEBGL_debug_renderer_info` → `UNMASKED_RENDERER_WEBGL` | **Apple Silicon** — `Apple M…` on a frozen Mac UA → `arm64` (only when `Sec-CH-UA-Arch` is absent); also populates `gpu.renderer` (Android SoC tier) |
+| `webgl_vendor` | `WEBGL_debug_renderer_info` → `UNMASKED_VENDOR_WEBGL` | populates `gpu.vendor` |
+| `platform` | `navigator.platform` | accepted; reserved for future rules |
+| `screen` `{w,h,dpr}` | `screen.width` / `screen.height` / `devicePixelRatio` | accepted; reserved for future rules |
+| `device_memory` | `navigator.deviceMemory` (Chromium-only, `0.25`–`8`) | accepted; coarse device-tier hint, reserved |
+| `hardware_concurrency` | `navigator.hardwareConcurrency` | accepted; coarse device-tier hint, reserved |
+
+> **Honest scope:** only `max_touch_points` and `webgl_*` change detection today (and `webgl_*` is echoed back as the `gpu` object); the other fields are accepted and reserved for future inference rules, so sending them is harmless but not yet impactful. All fields are optional. `webgl_*` is fingerprinting-adjacent — collect it only if that is acceptable for your users.
+
+**Collect on the page:**
 
 ```js
 const signals = {
-    max_touch_points: navigator.maxTouchPoints,        // unmasks iPads posing as Macs
+    max_touch_points: navigator.maxTouchPoints,
     platform: navigator.platform,
     screen: { w: screen.width, h: screen.height, dpr: devicePixelRatio },
-    // Optional, fingerprinting-adjacent — include only if acceptable for your users:
-    // webgl_renderer from WEBGL_debug_renderer_info (Apple Silicon / Android SoC detection)
+    hardware_concurrency: navigator.hardwareConcurrency,
+    device_memory: navigator.deviceMemory,           // Chromium only (undefined elsewhere)
 };
+
+// Optional GPU probe — fingerprinting-adjacent, include only if acceptable:
+const gl = document.createElement("canvas").getContext("webgl");
+const dbg = gl && gl.getExtension("WEBGL_debug_renderer_info");
+if (dbg) {
+    signals.webgl_vendor   = gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL);
+    signals.webgl_renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+}
 ```
 
-Priority inside the engine: Client Hints > signals > UA string — signals never override real CH data.
+**Forward it** (send `signals` to your backend, then on to the parser). REST example — the flagship iPad-as-Mac unmask:
+
+```bash
+curl -X POST http://localhost:8080/ -H "Content-Type: application/json" -d '{
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+  "signals": { "max_touch_points": 5, "platform": "MacIntel" }
+}'
+# Without signals → os "Mac OS X", device "desktop".
+# With    signals → os "iPadOS", device "tablet" (Apple iPad), category "mobile".
+```
+
+Native clients pass the same object as the last argument — e.g. Go `parser.ParseFull(ua, headers, &uaparser.Signals{MaxTouchPoints: 5})`, Node `parser.parse(ua, headers, { max_touch_points: 5 })`, Python `parser.parse(ua, headers, signals={"max_touch_points": 5})`, Java `parser.parse(ua, headers, signals)`.
 
 ## REST API Server
 
@@ -322,7 +377,7 @@ Notes: a leading slash is optional (`api` == `/api`); leaving `UA_BASE_PATH` uns
 
 ### Example Request
 
-The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints, and `signals` is an optional block of browser-collected evidence (see [Browser signals](#forwarding-headers-from-your-backend)):
+The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints, and `signals` is an optional block of browser-collected evidence (see [Browser Signals](#browser-signals)):
 
 ```bash
 curl -X POST http://localhost:8080/ \
