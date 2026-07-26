@@ -1,6 +1,7 @@
 package core
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -318,7 +319,7 @@ func TestCacheHit(t *testing.T) {
 	if res1 == res2 {
 		t.Errorf("Expected distinct pointers from cache (copy-on-return), got shared pointer")
 	}
-	if *res1 != *res2 {
+	if !reflect.DeepEqual(res1, res2) {
 		t.Errorf("Expected equal values from cache hit, got %+v vs %+v", res1, res2)
 	}
 

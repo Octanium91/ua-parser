@@ -85,6 +85,12 @@ public class UaParser {
         public String version;
         /** Canonical machine-readable OS key (windows, macos, ios, android, ...). */
         public String platform;
+        /** Human display label, e.g. "Windows 11", "macOS Sonoma". */
+        @SerializedName("version_name")
+        public String versionName;
+        /** Exact CH platform-version ("19.0.0" behind Windows "11"), or the UA version. */
+        @SerializedName("version_raw")
+        public String versionRaw;
     }
 
     public static class BrowserInfo {
@@ -127,7 +133,40 @@ public class UaParser {
         public String renderer;
     }
 
+    /** Undeclared automation (unlike is_bot): headless / Electron / webdriver. */
+    public static class AutomationInfo {
+        public boolean headless;
+        public boolean electron;
+        public boolean webdriver;
+    }
+
+    /** UA vs Client Hints vs signals consistency; reasons is empty when consistent. */
+    public static class IntegrityInfo {
+        public boolean spoofed;
+        public java.util.List<String> reasons;
+    }
+
+    /** Attack payload in the UA string (scanners, SQL-injection, XSS). */
+    public static class SecurityInfo {
+        public boolean suspicious;
+        public String category;
+    }
+
+    /** Which inputs drove the result (data-quality provenance). */
+    public static class DetectionInfo {
+        @SerializedName("client_hints_used")
+        public boolean clientHintsUsed;
+        @SerializedName("high_entropy")
+        public boolean highEntropy;
+        @SerializedName("signals_used")
+        public boolean signalsUsed;
+    }
+
     public static class Result {
+        /** Version of the result JSON shape that produced this object (e.g. "1.2"). */
+        @SerializedName("result_version")
+        public String resultVersion;
+
         public String ua;
         public OSInfo os;
         public BrowserInfo browser;
@@ -144,6 +183,27 @@ public class UaParser {
 
         @SerializedName("is_frozen_ua")
         public boolean isFrozenUa;
+
+        // --- Result v1.2 ---
+        @SerializedName("is_mobile")
+        public boolean isMobile;
+        @SerializedName("is_desktop")
+        public boolean isDesktop;
+        @SerializedName("is_touch_capable")
+        public boolean isTouchCapable;
+        @SerializedName("is_chrome_family")
+        public boolean isChromeFamily;
+        @SerializedName("is_apple_silicon")
+        public boolean isAppleSilicon;
+
+        public AutomationInfo automation;
+        public IntegrityInfo integrity;
+        public SecurityInfo security;
+        public DetectionInfo detection;
+
+        /** Coarse client-class bucket key (not a tracking fingerprint). */
+        @SerializedName("class_hash")
+        public String classHash;
 
         /** Non-null for bots: {name, category, vendor}. */
         public BotInfo bot;

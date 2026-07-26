@@ -14,6 +14,7 @@ A high-performance, cross-platform User-Agent parser: one Go core exposed to **G
 - **Correction Layer**: A declarative override config ([corrections.yaml](./pkg/core/resources/corrections.yaml)) patches known detection gaps (in-app browsers, vehicles, consoles, device vendors) on top of uap-core — embedded at build time and **hot-updated at runtime in every mode**, including the browser WASM build. Design: [docs/correction-layer.md](./docs/correction-layer.md).
 - **Browser Signals**: An optional `signals` block (touch points, `navigator.platform`, WebGL renderer, screen) unmasks what UA and Client Hints cannot — e.g. iPads masquerading as Macs in Safari, which sends no Client Hints at all. The browser WASM client collects them automatically.
 - **Rich Result**: Beyond browser/OS/device/engine — canonical `os.platform`, CPU bitness, `device.form_factor`, `is_frozen_ua`, and a classified `bot` object (`{name, category, vendor}` — training / search / user-fetch / agent / search-crawler / seo / social-preview) with canonical names synthesized even where uap-core yields junk.
+- **Traffic-quality signals** (Result v1.2, no external DB): `automation` (headless / Electron / webdriver — *undeclared* automation), `integrity` (UA vs Client Hints vs signals consistency → spoofed clients), `security` (attack payloads in the UA), `detection` provenance, plus convenience flags and a coarse `class_hash` bucket key.
 - **Hot-Swap**: Background `regexes.yaml` and `corrections.yaml` updates without service interruption, with detailed logging for observability.
 - **High Performance**: Optimized for low-latency processing using an LRU cache and efficient logic.
 - **Embedded**: Core regex patterns are bundled into the binary using `go:embed`.
@@ -377,58 +378,100 @@ Notes: a leading slash is optional (`api` == `/api`); leaving `UA_BASE_PATH` uns
 
 ### Example Request
 
-The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints, and `signals` is an optional block of browser-collected evidence (see [Browser Signals](#browser-signals)):
+The parse endpoint is the configured `UA_ROUTE_PATH` (default `/`) and accepts **POST** only (a GET returns `405 Method Not Allowed`). The minimal body is `{"ua":"<string>"}`; `headers` is optional but recommended for Client Hints, and `signals` is an optional block of browser-collected evidence (see [Browser Signals](#browser-signals)).
+
+This is the **exact request that produces the "Maximal" response below** — a real Chrome 150 on Windows 11 with the full high-entropy Client Hints set and browser signals, so you can copy it and reproduce the result verbatim:
 
 ```bash
 curl -X POST http://localhost:8080/ \
   -H "Content-Type: application/json" \
   -d '{
-    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
     "headers": {
+      "Sec-CH-UA": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"150\", \"Google Chrome\";v=\"150\"",
+      "Sec-CH-UA-Mobile": "?0",
       "Sec-CH-UA-Platform": "\"Windows\"",
-      "Sec-CH-UA-Platform-Version": "\"13.0.0\"",
-      "Sec-CH-UA-Full-Version-List": "\"Chromium\";v=\"119.0.6045.105\", \"Google Chrome\";v=\"119.0.6045.105\""
+      "Sec-CH-UA-Platform-Version": "\"19.0.0\"",
+      "Sec-CH-UA-Arch": "\"x86\"",
+      "Sec-CH-UA-Bitness": "\"64\"",
+      "Sec-CH-UA-Model": "\"\"",
+      "Sec-CH-UA-Full-Version-List": "\"Not)A;Brand\";v=\"8.0.0.0\", \"Chromium\";v=\"150.0.7871.182\", \"Google Chrome\";v=\"150.0.7871.182\"",
+      "Sec-CH-UA-Form-Factors": "\"Desktop\""
     },
-    "signals": { "max_touch_points": 0, "webgl_renderer": "" }
+    "signals": {
+      "max_touch_points": 10,
+      "platform": "Win32",
+      "hardware_concurrency": 32,
+      "device_memory": 32,
+      "screen": { "w": 1463, "h": 915, "dpr": 1.75 },
+      "webgl_vendor": "Google Inc. (AMD)",
+      "webgl_renderer": "ANGLE (AMD, AMD Radeon(TM) 8060S Graphics (0x00001586) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    }
   }'
 ```
 
+For the **"Incomplete input"** response further down, send the same body with only the `ua` field (no `headers`, no `signals`).
+
 ### Example Response
+
+Every result carries `result_version` — the version of the JSON shape (see [`ResultSchemaVersion`](./pkg/core/types.go)). It's bumped only when fields change, so a stored result stays traceable to the format (and thus the library range) that produced it even after you upgrade.
+
+**Maximal** — the [request above](#example-request) returns:
 
 ```json
 {
-  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Chrome/119.0.0.0 ...",
-  "browser": {
-    "name": "Chrome",
-    "version": "119.0.6045.105",
-    "major": "119",
-    "type": "browser"
-  },
-  "os": {
-    "name": "Windows",
-    "version": "11",
-    "platform": "windows"
-  },
-  "device": {
-    "model": "",
-    "vendor": "",
-    "type": "desktop",
-    "form_factor": "desktop"
-  },
-  "cpu": {
-    "architecture": "amd64",
-    "bitness": "64"
-  },
-  "engine": {
-    "name": "Blink",
-    "version": "119.0.6045.105"
-  },
+  "result_version": "1.2",
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+  "browser": { "name": "Chrome", "version": "150.0.7871.182", "major": "150", "type": "browser" },
+  "os": { "name": "Windows", "version": "11", "platform": "windows", "version_name": "Windows 11", "version_raw": "19.0.0" },
+  "device": { "model": "", "vendor": "", "type": "desktop", "form_factor": "desktop" },
+  "cpu": { "architecture": "amd64", "bitness": "64" },
+  "engine": { "name": "Blink", "version": "150.0.7871.182" },
   "category": "desktop",
-  "is_bot": false,
-  "is_ai_crawler": false,
-  "is_frozen_ua": true
+  "is_bot": false, "is_ai_crawler": false, "is_frozen_ua": true,
+  "is_mobile": false, "is_desktop": true, "is_touch_capable": true,
+  "is_chrome_family": true, "is_apple_silicon": false,
+  "automation": { "headless": false, "electron": false, "webdriver": false },
+  "integrity": { "spoofed": false, "reasons": [] },
+  "security": { "suspicious": false },
+  "detection": { "client_hints_used": true, "high_entropy": true, "signals_used": true },
+  "class_hash": "f1eae05fe8edff24",
+  "gpu": { "vendor": "Google Inc. (AMD)", "renderer": "ANGLE (AMD, AMD Radeon(TM) 8060S Graphics (0x00001586) Direct3D11 vs_5_0 ps_5_0, D3D11)" }
 }
 ```
+
+The frozen UA alone says `Chrome/150.0.0.0` on `Windows NT 10.0`; the Client Hints promote it to the **exact build `150.0.7871.182`** and, crucially, to **Windows 11** (`Sec-CH-UA-Platform-Version: "19.0.0"`, preserved in `version_raw`). The `gpu` block and `is_touch_capable` come from the signals.
+
+**Incomplete input — the SAME device/browser, but no headers and no signals** (e.g. a raw log line). The response degrades honestly and says so via `detection`:
+
+```json
+{
+  "result_version": "1.2",
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+  "browser": { "name": "Chrome", "version": "150.0.0", "major": "150", "type": "browser" },
+  "os": { "name": "Windows", "version": "10", "platform": "windows", "version_name": "Windows 10", "version_raw": "10" },
+  "cpu": { "architecture": "amd64", "bitness": "64" },
+  "engine": { "name": "Blink", "version": "150.0.0.0" },
+  "category": "desktop",
+  "is_frozen_ua": true, "is_touch_capable": false,
+  "detection": { "client_hints_used": false, "high_entropy": false, "signals_used": false }
+}
+```
+
+Same machine, different answer: **Windows 10 not 11** (the frozen UA can't tell them apart without Client Hints), a generic `150.0.0` version, no touch, and the `gpu` key is omitted entirely (nothing to populate it). **`detection` makes the input quality explicit** — `client_hints_used`/`signals_used`/`high_entropy` are all `false`, so a consumer immediately knows this result is a best-effort UA-only guess, not a CH-backed reading.
+
+Field groups added in **Result v1.2** (all derived locally — no external DB):
+
+| Group | Fields | Purpose |
+|---|---|---|
+| Convenience | `is_mobile`, `is_desktop`, `is_touch_capable`, `is_chrome_family`, `is_apple_silicon` | ready booleans for common branching |
+| `automation` | `headless`, `electron`, `webdriver` | **undeclared** automation (unlike `is_bot`) — headless browsers, Electron shells, Selenium/Puppeteer |
+| `integrity` | `spoofed`, `reasons[]` | cross-checks UA vs Client Hints vs signals for contradictions (spoofed clients) |
+| `security` | `suspicious`, `category` | attack payloads in the UA (scanners, SQL-injection, XSS) |
+| `detection` | `client_hints_used`, `high_entropy`, `signals_used` | **input provenance** — which richer inputs were actually present (all `false` on a UA-only parse) |
+| `gpu` | `vendor`, `renderer` | present **only when a WebGL signal was supplied** (`webgl_vendor`/`webgl_renderer`); source of Apple-Silicon / Android-SoC inference |
+| `os.version_name` / `os.version_raw` | — | human label (`macOS Sonoma`) and exact CH version (`19.0.0` behind Windows `11`) |
+| `class_hash` | — | stable hash of the client-**class** tuple (same for every client of the same class); an analytics bucket key — deliberately coarse, **not** a per-user/device tracking fingerprint |
 
 For bots the response additionally carries a classified identity object — canonical name synthesized even where uap-core's generic patterns produce junk (`ChatGPT-User` used to parse as `"com/bot"`):
 

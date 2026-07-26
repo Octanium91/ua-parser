@@ -28,21 +28,64 @@ type Config struct {
 	DisableCorrectionsUpdate bool   `json:"disable_corrections_update"`
 }
 
+// ResultSchemaVersion is the version of the Result JSON shape. Bump it
+// whenever fields are added or their meaning changes, so a stored result
+// stays traceable to the format (and thus the library range) that produced
+// it. Emitted on every result as `result_version`.
+//
+//	1.0 — browser/os/device/cpu/engine/category + is_bot/is_ai_crawler
+//	1.1 — os.platform, cpu.bitness, device.form_factor, is_frozen_ua, bot{}, gpu{}
+//	1.2 — automation, integrity, security, detection, convenience flags,
+//	      os.version_name/version_raw, class_hash
+const ResultSchemaVersion = "1.2"
+
 type Result struct {
-	UA          string      `json:"ua"`
-	Browser     BrowserInfo `json:"browser"`
-	OS          OSInfo      `json:"os"`
-	Device      DeviceInfo  `json:"device"`
-	CPU         CPUInfo     `json:"cpu"`
-	Engine      EngineInfo  `json:"engine"`
-	Category    string      `json:"category"`
-	IsBot       bool        `json:"is_bot"`
-	IsAICrawler bool        `json:"is_ai_crawler"`
+	// ResultVersion is ResultSchemaVersion at parse time (see above).
+	ResultVersion string      `json:"result_version"`
+	UA            string      `json:"ua"`
+	Browser       BrowserInfo `json:"browser"`
+	OS            OSInfo      `json:"os"`
+	Device        DeviceInfo  `json:"device"`
+	CPU           CPUInfo     `json:"cpu"`
+	Engine        EngineInfo  `json:"engine"`
+	Category      string      `json:"category"`
+	IsBot         bool        `json:"is_bot"`
+	IsAICrawler   bool        `json:"is_ai_crawler"`
 
 	// IsFrozenUA reports that the UA string is a frozen/reduced template
 	// (Chromium reduced UA, the capped Mac OS X 10_15_7 token, "Android 10;
 	// K") — a signal that Client Hints, not the UA, carry the truth.
 	IsFrozenUA bool `json:"is_frozen_ua"`
+
+	// --- Result v1.2: enrichment derived from UA + CH + signals (no DB) ---
+
+	// Convenience classifications (derived from device/engine/cpu).
+	IsMobile       bool `json:"is_mobile"`
+	IsDesktop      bool `json:"is_desktop"`
+	IsTouchCapable bool `json:"is_touch_capable"`
+	IsChromeFamily bool `json:"is_chrome_family"`
+	IsAppleSilicon bool `json:"is_apple_silicon"`
+
+	// Automation flags UNDECLARED automation (unlike is_bot, which is declared
+	// bots): headless browsers, Electron shells, and navigator.webdriver.
+	Automation AutomationInfo `json:"automation"`
+
+	// Integrity cross-checks UA vs Client Hints vs signals for contradictions
+	// — a spoofed/inconsistent client. Reasons is empty when consistent.
+	Integrity IntegrityInfo `json:"integrity"`
+
+	// Security flags attack payloads embedded in the UA string (scanners,
+	// SQL-injection, XSS) — the WAF-adjacent "Hacker" signal.
+	Security SecurityInfo `json:"security"`
+
+	// Detection reports whether Client Hints drove the result (trust/quality).
+	Detection DetectionInfo `json:"detection"`
+
+	// ClassHash is a stable hash of the client CLASS tuple (browser/os/device/
+	// engine/cpu/category) — a ready analytics bucket key, identical for every
+	// client of the same class. It is deliberately coarse: NOT a per-user/
+	// per-device tracking fingerprint (no version, screen, IP, or fonts).
+	ClassHash string `json:"class_hash"`
 
 	// Bot is set for every detected bot: canonical agent name plus a curated
 	// category/vendor (training | search | user-fetch | agent | search-crawler
@@ -52,6 +95,32 @@ type Result struct {
 
 	// GPU is populated only when the client supplied a WebGL signal.
 	GPU *GPUInfo `json:"gpu,omitempty"`
+}
+
+type AutomationInfo struct {
+	Headless  bool `json:"headless"`
+	Electron  bool `json:"electron"`
+	Webdriver bool `json:"webdriver"`
+}
+
+type IntegrityInfo struct {
+	Spoofed bool     `json:"spoofed"`
+	Reasons []string `json:"reasons"`
+}
+
+type SecurityInfo struct {
+	Suspicious bool   `json:"suspicious"`
+	Category   string `json:"category,omitempty"` // scanner | sql-injection | xss | path-traversal | jndi
+}
+
+// DetectionInfo tells the consumer WHICH inputs drove the result, so data
+// quality is visible at a glance: client_hints_used / signals_used report
+// whether those richer inputs were present at all (UA-only parses set both
+// false), and high_entropy whether high-entropy Client Hints were supplied.
+type DetectionInfo struct {
+	ClientHintsUsed bool `json:"client_hints_used"`
+	HighEntropy     bool `json:"high_entropy"`
+	SignalsUsed     bool `json:"signals_used"`
 }
 
 type BrowserInfo struct {
@@ -68,6 +137,11 @@ type OSInfo struct {
 	// linux, android, ios, chromeos, tizen, playstation, other) — Name keeps
 	// the marketing spelling.
 	Platform string `json:"platform"`
+	// VersionName is a human display label ("Windows 11", "macOS Sonoma",
+	// "Android 14"); VersionRaw is the exact CH platform-version ("15.0.0" for
+	// Windows 11) before normalization, or the UA-derived version otherwise.
+	VersionName string `json:"version_name"`
+	VersionRaw  string `json:"version_raw"`
 }
 
 type DeviceInfo struct {
@@ -108,6 +182,9 @@ type Signals struct {
 	Screen              *ScreenInfo `json:"screen,omitempty"`
 	DeviceMemory        float64     `json:"device_memory,omitempty"`
 	HardwareConcurrency int         `json:"hardware_concurrency,omitempty"`
+	// Webdriver mirrors navigator.webdriver — true under Selenium/Puppeteer/
+	// Playwright automation; feeds automation.webdriver.
+	Webdriver bool `json:"webdriver,omitempty"`
 }
 
 type ScreenInfo struct {

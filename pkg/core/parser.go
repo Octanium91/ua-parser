@@ -4,6 +4,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -328,6 +330,10 @@ func (p *Parser) computeResultFull(ua string, normalizedHeaders map[string]strin
 	// Infer additional info
 	p.inferInfo(res, uaLower)
 
+	// UA-derived OS platform, captured BEFORE Client Hints overwrite it — the
+	// integrity check compares this against the CH-declared platform.
+	uaOSPlatform := platformOf(res.OS.Name)
+
 	// Apply Client Hints (overrides) using already-normalized headers
 	p.applyClientHints(res, normalizedHeaders)
 
@@ -369,11 +375,16 @@ func (p *Parser) computeResultFull(ua string, normalizedHeaders map[string]strin
 		res.Bot.Name = res.Browser.Name
 	}
 
+	// Result v1.2 enrichment (convenience flags, automation, integrity,
+	// security, detection provenance, OS labels, class_hash).
+	enrichResult(res, uaLower, normalizedHeaders, signals, uaOSPlatform)
+
 	return res
 }
 
-// copyResult returns an independent copy: Result contains two pointer fields
-// (Bot, GPU) that must not be shared between the cache and callers.
+// copyResult returns an independent copy: Result contains pointer/slice fields
+// (Bot, GPU, Integrity.Reasons) that must not be shared between the cache and
+// callers.
 func copyResult(res *Result) *Result {
 	cp := *res
 	if res.Bot != nil {
@@ -383,6 +394,13 @@ func copyResult(res *Result) *Result {
 	if res.GPU != nil {
 		g := *res.GPU
 		cp.GPU = &g
+	}
+	if res.Integrity.Reasons != nil {
+		// make (not append-to-nil) so an empty-but-non-nil slice stays non-nil
+		// and still marshals as [] rather than null.
+		r := make([]string, len(res.Integrity.Reasons))
+		copy(r, res.Integrity.Reasons)
+		cp.Integrity.Reasons = r
 	}
 	return &cp
 }
@@ -412,6 +430,9 @@ func buildCacheKey(ua string, headers map[string]string, signals *Signals) strin
 		writeField(signals.Platform)
 		writeField(signals.WebGLVendor)
 		writeField(signals.WebGLRenderer)
+		if signals.Webdriver {
+			b.WriteByte('W') // navigator.webdriver feeds automation.webdriver
+		}
 		if signals.Screen != nil {
 			writeField(strconv.Itoa(signals.Screen.W))
 			writeField(strconv.Itoa(signals.Screen.H))
@@ -702,6 +723,170 @@ func detectFrozenUA(uaLower string) bool {
 	return false
 }
 
+// securityPayloads are attack-tool / injection markers that appear in hostile
+// UA strings (mirrors Yauaa's "Hacker" class). Substring match on the lowered
+// UA; kept small and unambiguous to avoid false positives on real products.
+var securityPayloads = []struct{ token, category string }{
+	{"sqlmap", "scanner"}, {"nikto", "scanner"}, {"nessus", "scanner"},
+	{"openvas", "scanner"}, {"acunetix", "scanner"}, {"nmap", "scanner"},
+	{"masscan", "scanner"}, {"zgrab", "scanner"}, {"wpscan", "scanner"},
+	{"' or '1'='1", "sql-injection"}, {"union select", "sql-injection"},
+	{" or 1=1", "sql-injection"}, {"<script", "xss"}, {"javascript:", "xss"},
+	{"onerror=", "xss"}, {"/etc/passwd", "path-traversal"}, {"../../", "path-traversal"},
+	{"${jndi:", "jndi"},
+}
+
+// enrichResult computes the Result v1.2 fields from the FINAL parsed state plus
+// the raw inputs. All derivations are local (no external database).
+func enrichResult(res *Result, uaLower string, headers map[string]string, signals *Signals, uaOSPlatform string) {
+	res.ResultVersion = ResultSchemaVersion
+
+	// --- Convenience classifications ---
+	res.IsMobile = res.Device.Type == "mobile" || res.Device.Type == "tablet"
+	res.IsDesktop = res.Device.Type == "desktop"
+	res.IsTouchCapable = res.IsMobile || (signals != nil && signals.MaxTouchPoints > 0)
+	res.IsChromeFamily = res.Engine.Name == "Blink"
+	res.IsAppleSilicon = res.OS.Platform == "macos" && res.CPU.Architecture == "arm64"
+
+	// --- Automation (undeclared, unlike is_bot) ---
+	res.Automation.Headless = strings.Contains(uaLower, "headless") ||
+		strings.Contains(uaLower, "phantomjs") || strings.Contains(uaLower, "slimerjs")
+	res.Automation.Electron = strings.Contains(uaLower, "electron/")
+	res.Automation.Webdriver = signals != nil && signals.Webdriver
+
+	// --- Detection provenance ---
+	for _, k := range cacheKeyHeaders {
+		if k == "x-requested-with" {
+			continue
+		}
+		if headers[k] != "" {
+			res.Detection.ClientHintsUsed = true
+			break
+		}
+	}
+	for _, k := range []string{
+		"sec-ch-ua-platform-version", "sec-ch-ua-model", "sec-ch-ua-arch",
+		"sec-ch-ua-bitness", "sec-ch-ua-full-version-list", "sec-ch-ua-form-factors",
+	} {
+		if headers[k] != "" {
+			res.Detection.HighEntropy = true
+			break
+		}
+	}
+	res.Detection.SignalsUsed = signalsProvided(signals)
+
+	// --- Integrity (UA vs Client Hints vs signals consistency) ---
+	reasons := []string{}
+	if rawPlat := cleanHeader(headers["sec-ch-ua-platform"]); rawPlat != "" && rawPlat != "Unknown" {
+		if chPlat := platformOf(rawPlat); chPlat != "other" &&
+			uaOSPlatform != "" && uaOSPlatform != "other" && chPlat != uaOSPlatform {
+			reasons = append(reasons, "ua-platform≠ch-platform")
+		}
+	}
+	// Only Chromium sends a real (non-GREASE) Sec-CH-UA brand list; seeing one
+	// on a non-Blink engine means the UA (or the header) is forged.
+	if len(parseBrandList(headers["sec-ch-ua"])) > 0 && res.Engine.Name != "" && res.Engine.Name != "Blink" {
+		reasons = append(reasons, "sec-ch-ua-on-non-chromium")
+	}
+	// A real phone/tablet always reports touch; zero touch on a mobile OS with
+	// signals present is contradictory.
+	if signals != nil && signals.MaxTouchPoints == 0 && res.IsMobile &&
+		(res.OS.Platform == "ios" || res.OS.Platform == "android") {
+		reasons = append(reasons, "touchless-mobile")
+	}
+	res.Integrity = IntegrityInfo{Spoofed: len(reasons) > 0, Reasons: reasons}
+
+	// --- Security (attack payload in the UA string) ---
+	for _, p := range securityPayloads {
+		if strings.Contains(uaLower, p.token) {
+			res.Security = SecurityInfo{Suspicious: true, Category: p.category}
+			break
+		}
+	}
+
+	// --- OS labels ---
+	if res.OS.VersionRaw == "" {
+		res.OS.VersionRaw = res.OS.Version
+	}
+	res.OS.VersionName = osVersionLabel(res.OS.Platform, res.OS.Name, res.OS.Version)
+
+	// --- Class hash (stable bucket key for the client class, not a device id) ---
+	res.ClassHash = classHash(res)
+}
+
+// signalsProvided reports whether a non-empty browser-signals block was
+// supplied (an empty {} or nil counts as "no signals").
+func signalsProvided(s *Signals) bool {
+	if s == nil {
+		return false
+	}
+	return s.MaxTouchPoints != 0 || s.Platform != "" || s.WebGLVendor != "" ||
+		s.WebGLRenderer != "" || s.Screen != nil || s.DeviceMemory != 0 ||
+		s.HardwareConcurrency != 0 || s.Webdriver
+}
+
+// osVersionLabel builds a human display label: macOS uses its marketing
+// codename where known, everything else is "<Name> <version>".
+func osVersionLabel(platform, name, version string) string {
+	if platform == "macos" {
+		if code := macOSCodename(majorOf(version)); code != "" {
+			return "macOS " + code
+		}
+		if version != "" {
+			return "macOS " + version
+		}
+		return "macOS"
+	}
+	label := name
+	switch platform {
+	case "windows":
+		label = "Windows"
+	case "ios":
+		label = "iOS"
+	case "android":
+		label = "Android"
+	case "chromeos":
+		label = "ChromeOS"
+	}
+	if version != "" {
+		return strings.TrimSpace(label + " " + version)
+	}
+	return label
+}
+
+// macOSCodename maps a macOS major version to its marketing name (curated, no
+// external DB). Empty for unknown/older versions.
+func macOSCodename(major string) string {
+	switch major {
+	case "15":
+		return "Sequoia"
+	case "14":
+		return "Sonoma"
+	case "13":
+		return "Ventura"
+	case "12":
+		return "Monterey"
+	case "11":
+		return "Big Sur"
+	}
+	return ""
+}
+
+// classHash hashes the client-class tuple (not traffic-quality fields) into a
+// stable hex key. Coarse by design — the same for every client of the same
+// class — so it is a bucket key, not a tracking fingerprint. Deterministic:
+// no time/random.
+func classHash(res *Result) string {
+	h := fnv.New64a()
+	_, _ = io.WriteString(h, strings.Join([]string{
+		res.Browser.Name, res.Browser.Major,
+		res.OS.Name, res.OS.Version,
+		res.Device.Type, res.Device.Vendor, res.Device.Model,
+		res.Engine.Name, res.CPU.Architecture, res.Category,
+	}, "|"))
+	return strconv.FormatUint(h.Sum64(), 16)
+}
+
 func isBot(nameLower, uaLower string) bool {
 	// Check parsed browser name (most reliable, already isolated by uap-go)
 	if strings.Contains(nameLower, "bot") || strings.Contains(nameLower, "crawler") || strings.Contains(nameLower, "spider") || strings.Contains(nameLower, "scrap") {
@@ -824,6 +1009,12 @@ func (p *Parser) applyClientHints(res *Result, headers map[string]string) {
 	// --- Platform / OS ---
 	// CH values are normalized to uap-core's canonical family names so the same
 	// OS reports the same name whether or not hints were present.
+	// Preserve the exact CH platform-version before normalization (Windows
+	// 15.0.0 → "11"); consumers that want the real build read os.version_raw.
+	if platformVer != "" {
+		res.OS.VersionRaw = platformVer
+	}
+
 	switch platform {
 	case "", "Unknown":
 		// No reliable platform info — keep the UA-derived values.
