@@ -42,12 +42,14 @@
 - The background updater (`pkg/core/updater_default.go`) downloads `regexes.yaml` and hot-swaps it via `yaml.Unmarshal` (JSON accepted only as a fallback). Keep the embedded default and the updater on the same YAML path.
 
 ## Go Version
-- The project uses **Go 1.26** as the minimum version.
+- `go.mod` declares **`go 1.23`** (the minimum for library consumers) and **`toolchain go1.27.4`** (what we build and release with). Do not raise the `go` line without a real need: it forces every dependent project up to that version.
+- CI (`test.yml`) runs the suite on both Go 1.23 (with `GOTOOLCHAIN=local`, so the `toolchain` line cannot switch it) and Go 1.27. Code must stay within the Go 1.23 language and standard library.
+- Exception: the wasip1 reactor (`cmd/wasm`) needs Go 1.24+ for `//go:wasmexport`; its `go1.24` build tag makes older toolchains fail instead of emitting a module without exports. Release artifacts are always built with the 1.27 toolchain.
 
 ## musl/Alpine: native loading is impossible — do NOT try build-level workarounds
 - Go's `c-shared` (and `c-archive`) buildmode emits **initial-exec TLS** for the runtime; musl's dynamic loader rejects `dlopen()` of such libraries with "initial-exec TLS resolves to dynamic definition" ([golang/go#54805](https://github.com/golang/go/issues/54805), [#13492](https://github.com/golang/go/issues/13492)). This affects **every FFI host** (JNA, koffi, ctypes) on Alpine, even for `.so` files built natively with the musl toolchain.
 - **No build flags fix this** (verified empirically on Go 1.26.5): `CGO_CFLAGS="-ftls-model=global-dynamic"` only affects cgo C code, not the Go runtime's own TLS access; `-Wl,-Bsymbolic` is already applied by Go and does not help; a two-step `c-archive` + `gcc -shared` build has the same IE TLS relocations. `LD_PRELOAD` and gcompat also do not work (JVM segfault / loader-level rejection).
-- The upstream fix is the `-tls` linker flag (general-dynamic/TLSDESC) in [golang/go PR #75048](https://github.com/golang/go/pull/75048) — unmerged; expected in Go 1.27 at the earliest. When a Go release ships it, rebuild the musl `.so` artifacts and native loading on Alpine will start working; the client loaders already attempt the musl `.so` first by design.
+- The upstream fix is the `-tls` linker flag (general-dynamic/TLSDESC) in [golang/go PR #75048](https://github.com/golang/go/pull/75048) — still unmerged and not included in Go 1.27 (checked against Go 1.27.4). When a Go release ships it, rebuild the musl `.so` artifacts and native loading on Alpine will start working; the client loaders already attempt the musl `.so` first by design.
 - Note the **pure-Go client and the REST server are unaffected** — they have no cgo/dlopen, so they build and run statically on Alpine/musl normally. The limitation is only for the FFI clients loading the `c-shared` library.
 - **Supported strategy on Alpine for the FFI clients**: fall back to WebAssembly automatically — Java uses Chicory, Node.js uses `node:wasi` (Node >= 18.17). Python has no WASM fallback and raises a descriptive `RuntimeError` on musl (naming golang/go#54805 and the alternatives). Keep shipping the musl `.so` artifacts for forward compatibility.
 

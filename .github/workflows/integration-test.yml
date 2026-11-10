@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ["golang:1.26-bookworm", "golang:1.26-alpine"]
+        image: ["golang:1.27-bookworm", "golang:1.27-alpine"]
     steps:
       - name: Pull image (retry)
         run: |

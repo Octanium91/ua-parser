@@ -31,7 +31,7 @@ public class UaParser {
 
             if (JnaBackend.isMusl()) {
                 System.err.println("NOTE: Alpine/musl cannot dlopen Go native libraries until"
-                        + " golang/go#54805 is fixed in the Go toolchain (expected Go 1.27+)."
+                        + " golang/go#54805 is fixed in the Go toolchain (not fixed as of Go 1.27)."
                         + " The WebAssembly backend is the supported mode on Alpine.");
             }
 

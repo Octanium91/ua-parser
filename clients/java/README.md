@@ -98,7 +98,7 @@ You can check which backend is active via `parser.getBackendName()` (`"JnaBacken
 
 #### Alpine Linux / musl
 
-On Alpine (and any musl-based distro) the native driver currently **cannot** be loaded: musl's dynamic loader rejects `dlopen` of Go c-shared libraries ([golang/go#54805](https://github.com/golang/go/issues/54805); the fix is expected no earlier than Go 1.27). The client detects musl and switches to the WebAssembly backend automatically — no configuration needed. Expected overhead: several seconds of one-time initialization (WASM is compiled to JVM bytecode at startup) and slower parsing than native; results are identical and LRU-cached. The bundled musl `.so` will start loading automatically once a fixed Go toolchain ships and libraries are rebuilt.
+On Alpine (and any musl-based distro) the native driver currently **cannot** be loaded: musl's dynamic loader rejects `dlopen` of Go c-shared libraries ([golang/go#54805](https://github.com/golang/go/issues/54805); not fixed as of Go 1.27). The client detects musl and switches to the WebAssembly backend automatically — no configuration needed. Expected overhead: several seconds of one-time initialization (WASM is compiled to JVM bytecode at startup) and slower parsing than native; results are identical and LRU-cached. The bundled musl `.so` will start loading automatically once a fixed Go toolchain ships and libraries are rebuilt.
 
 If you need native-level throughput on Alpine, run the standalone REST server (`ghcr.io/octanium91/ua-parser`) next to your application, or use a glibc-based base image (e.g. `eclipse-temurin:17-jre`).
 

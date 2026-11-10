@@ -59,7 +59,7 @@ public class JnaBackend implements ParserBackend {
                 if (isMusl()) {
                     // musl's dynamic loader rejects dlopen of Go c-shared libraries
                     // (initial-exec TLS, golang/go#54805) on every Go release up to and
-                    // including 1.26.x. We still attempt the musl build so deployments
+                    // including 1.27.x. We still attempt the musl build so deployments
                     // pick up native mode automatically once a fixed Go toolchain ships,
                     // but we never try the glibc build here: it cannot load on musl and
                     // its error would mask the real reason.

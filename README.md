@@ -93,7 +93,7 @@ We provide official wrappers for major languages that use the core shared librar
 | **macOS** (amd64/arm64) | ✅ native | ✅ native | ✅ native | ✅ native | — |
 | **Browser** | — | — | ✅ js/wasm | — | — |
 
-¹ Automatic — native `dlopen` of Go libraries is impossible on musl until the Go toolchain fix ([golang/go#54805](https://github.com/golang/go/issues/54805), expected Go 1.27+); after that, rebuilt releases load natively with no client changes.
+¹ Automatic — native `dlopen` of Go libraries is impossible on musl until the Go toolchain fix ([golang/go#54805](https://github.com/golang/go/issues/54805), not fixed as of Go 1.27); after that, rebuilt releases load natively with no client changes.
 ² Python has no WASM fallback; on Alpine it raises a descriptive error suggesting the REST server, a glibc image, or the Java/Node clients.
 
 ### Package Registry Setup
@@ -123,7 +123,7 @@ Our Java client is designed to provide a significantly lower memory footprint an
 > **Performance Note on WASM Mode:** The first initialization of the WASM engine takes a few seconds (~9s measured on Alpine) while the module is compiled to JVM bytecode; parsing is then fast and LRU-cached. Check the active mode via `parser.getBackendName()`.
 
 > [!IMPORTANT]
-> **⚠️ Alpine Linux Users:** Native loading of Go shared libraries on musl is currently **impossible at the toolchain level** ([golang/go#54805](https://github.com/golang/go/issues/54805)) — this is not fixable with `gcompat` (do **not** install it for this purpose), `LD_PRELOAD`, or build flags. The WASM fallback is the supported mode on Alpine and engages automatically. For native-level throughput on Alpine, run the REST server container (`ghcr.io/octanium91/ua-parser`) next to your app or use a glibc-based image. Once the upstream Go fix ships (expected Go 1.27+), rebuilt releases will load natively on Alpine with no client changes.
+> **⚠️ Alpine Linux Users:** Native loading of Go shared libraries on musl is currently **impossible at the toolchain level** ([golang/go#54805](https://github.com/golang/go/issues/54805)) — this is not fixable with `gcompat` (do **not** install it for this purpose), `LD_PRELOAD`, or build flags. The WASM fallback is the supported mode on Alpine and engages automatically. For native-level throughput on Alpine, run the REST server container (`ghcr.io/octanium91/ua-parser`) next to your app or use a glibc-based image. Once the upstream Go fix ships (not included in Go 1.27), rebuilt releases will load natively on Alpine with no client changes.
 
 ---
 
@@ -332,7 +332,7 @@ Native clients pass the same object as the last argument — e.g. Go `parser.Par
 
 ### Running Locally
 
-To run the server locally without Docker (**requires Go 1.26+**; the regex database is embedded, no generation step needed):
+To run the server locally without Docker (**requires Go 1.23+**; the regex database is embedded, no generation step needed):
 
 ```bash
 go run ./cmd/server

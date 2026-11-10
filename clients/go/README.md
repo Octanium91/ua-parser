@@ -8,6 +8,8 @@ This is the official Go client wrapper for the high-performance Universal User-A
 go get github.com/Octanium91/ua-parser/clients/go
 ```
 
+Requires **Go 1.23+**. CI tests the module on Go 1.23 as well as on the toolchain releases are built with (Go 1.27), so adding the dependency does not raise your project's `go` line above 1.23.
+
 Note: Since this is a submodule of the main repository, you can also just import it if you are already using the main module.
 
 ## Usage

@@ -17,19 +17,34 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # '1.27' = the toolchain releases are built with (go.mod `toolchain`).
+        # '1.23' = the minimum Go version library consumers need (go.mod `go`);
+        # this job keeps that promise honest. Keep both in sync with go.mod.
+        go: ['1.27', '1.23']
+    name: test (Go ${{ matrix.go }})
+    env:
+      # Without this the go.mod `toolchain` line would silently switch the
+      # 1.23 job to the newer toolchain and the minimum would go untested.
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
 
       - name: Build all packages
         run: go build ./...
 
       - name: Build WASM targets
         run: |
-          GOOS=wasip1 GOARCH=wasm go build ./cmd/wasm
+          # wasip1 reactor needs Go 1.24+ (//go:wasmexport); see cmd/wasm/main.go.
+          if [ "${{ matrix.go }}" != "1.23" ]; then
+            GOOS=wasip1 GOARCH=wasm go build ./cmd/wasm
+          fi
           GOOS=js GOARCH=wasm go build ./cmd/wasmjs
 
       - name: Test
@@ -49,5 +64,5 @@ jobs:
           fi
 
       - name: Benchmarks
-        if: ${{ inputs.benchmarks }}
+        if: ${{ inputs.benchmarks && matrix.go != '1.23' }}
         run: go test -bench=. -benchmem ./pkg/core/

@@ -1,6 +1,11 @@
-//go:build wasm && wasip1
+//go:build wasm && wasip1 && go1.24
 
 // This is the WASI (wasip1) reactor build of the UA parser.
+//
+// It requires Go 1.24+: //go:wasmexport and -buildmode=c-shared for wasip1
+// arrived in 1.24. Older toolchains silently ignore the directive and emit a
+// module without exports, so the go1.24 build tag makes them fail loudly
+// instead. The rest of the module only needs the go.mod minimum (1.23).
 //
 // Memory contract with the host:
 //   - malloc/free manage buffers that cross the WASM boundary. Allocated
