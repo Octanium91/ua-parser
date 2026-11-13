@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"time"
 
 	core "github.com/Octanium91/ua-parser/pkg/core"
@@ -79,12 +80,37 @@ func main() {
 	}
 }
 
+// uniqueUA makes the i-th parse of a corpus entry a string that has never been
+// parsed before, while keeping its shape: the last run of digits (normally
+// the tail of a version number) is replaced by i. Entries without any digit
+// get a numbered build token appended.
+func uniqueUA(ua string, i int) string {
+	end := len(ua)
+	for end > 0 && (ua[end-1] < '0' || ua[end-1] > '9') {
+		end--
+	}
+	if end == 0 {
+		return ua + " build/" + strconv.Itoa(i)
+	}
+	start := end
+	for start > 0 && ua[start-1] >= '0' && ua[start-1] <= '9' {
+		start--
+	}
+	return ua[:start] + strconv.Itoa(i) + ua[end:]
+}
+
 // bench measures full-pipeline throughput (regex parse + inference + Client
-// Hints + bot/AI detection) in two passes: cache disabled (every parse is a
-// miss) and, when -cache > 0, cache enabled (steady-state hits, the realistic
-// web-traffic profile where the same UAs repeat).
+// Hints + bot/AI detection) in up to three passes that must not be confused:
+//
+//   - unique UAs: every parse sees a string that is in no cache. This is the
+//     real parsing cost, and the number to compare with cache-less parsers.
+//   - repeated UAs, no LRU: the corpus round-robin with the result LRU off.
+//     The regex stage is still answered from the core's internal match memo,
+//     so this measures the post-regex pipeline, NOT regex parsing.
+//   - repeated UAs, LRU hits (when -cache > 0): the production default for
+//     traffic where the same UAs repeat.
 func bench(corpus []corpusEntry, n, cacheSize int) {
-	runPass := func(label string, size int) {
+	runPass := func(label string, size int, unique bool) {
 		parser, err := core.New(core.Config{DisableAutoUpdate: true, LRUCacheSize: size})
 		if err != nil {
 			fatal(err)
@@ -96,6 +122,20 @@ func bench(corpus []corpusEntry, n, cacheSize int) {
 			parser.Parse(e.UA, e.Headers)
 		}
 
+		// Unique strings are built before the clock starts.
+		var uas []string
+		if unique {
+			uas = make([]string, n)
+			seen := make(map[string]struct{}, n)
+			for i := range uas {
+				uas[i] = uniqueUA(corpus[i%len(corpus)].UA, i)
+				if _, dup := seen[uas[i]]; dup {
+					fatal(fmt.Errorf("unique pass produced a duplicate UA: %q", uas[i]))
+				}
+				seen[uas[i]] = struct{}{}
+			}
+		}
+
 		runtime.GC()
 		var before runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -103,7 +143,11 @@ func bench(corpus []corpusEntry, n, cacheSize int) {
 		start := time.Now()
 		for i := 0; i < n; i++ {
 			e := corpus[i%len(corpus)]
-			parser.Parse(e.UA, e.Headers)
+			if unique {
+				parser.Parse(uas[i], e.Headers)
+			} else {
+				parser.Parse(e.UA, e.Headers)
+			}
 		}
 		elapsed := time.Since(start)
 
@@ -117,9 +161,10 @@ func bench(corpus []corpusEntry, n, cacheSize int) {
 			float64(after.TotalAlloc-before.TotalAlloc)/float64(n))
 	}
 
-	runPass("uncached", 0)
+	runPass("unique UAs (no LRU)", 0, true)
+	runPass("repeated UAs (no LRU)", 0, false)
 	if cacheSize > 0 {
-		runPass(fmt.Sprintf("cached(size=%d)", cacheSize), cacheSize)
+		runPass(fmt.Sprintf("repeated UAs, LRU hits (size=%d)", cacheSize), cacheSize, false)
 	}
 
 	var ms runtime.MemStats

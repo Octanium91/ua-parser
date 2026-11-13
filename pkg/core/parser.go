@@ -179,7 +179,7 @@ var cacheKeyHeaders = []string{
 
 type Parser struct {
 	mu     sync.RWMutex
-	uap    *uaparser.Parser
+	uap    *uapMatcher // uap-core regex stage; replaced as a whole on hot-swap
 	cache  *lru.Cache[string, *Result]
 	config Config
 	ctx    context.Context
@@ -231,7 +231,7 @@ func New(cfg Config) (*Parser, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	p := &Parser{
-		uap:    uap,
+		uap:    newUAPMatcher(uap),
 		cache:  cache,
 		config: cfg,
 		ctx:    ctx,
@@ -302,9 +302,12 @@ func (p *Parser) computeResult(ua string, normalizedHeaders map[string]string, c
 }
 
 func (p *Parser) computeResultFull(ua string, normalizedHeaders map[string]string, signals *Signals, cc *compiledCorrections) *Result {
+	uaLower := strings.ToLower(ua)
+
 	p.mu.RLock()
-	client := p.uap.Parse(ua)
+	matcher := p.uap
 	p.mu.RUnlock()
+	client := matcher.parse(ua, uaLower)
 
 	res := &Result{
 		UA: ua,
@@ -324,8 +327,6 @@ func (p *Parser) computeResultFull(ua string, normalizedHeaders map[string]strin
 			Type:   "desktop", // Default
 		},
 	}
-
-	uaLower := strings.ToLower(ua)
 
 	// Infer additional info
 	p.inferInfo(res, uaLower)

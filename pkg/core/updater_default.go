@@ -191,8 +191,10 @@ func (p *Parser) updateRegexes() {
 		return
 	}
 
+	newMatcher := newUAPMatcher(newUap)
+
 	p.mu.Lock()
-	p.uap = newUap
+	p.uap = newMatcher
 	p.mu.Unlock()
 
 	// Bump the generation BEFORE purging: any Parse that started against the

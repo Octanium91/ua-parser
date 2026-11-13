@@ -96,9 +96,18 @@ Benchmark methodology notes:
   iteration, after a warmup pass; both are single-threaded (the Go core
   additionally scales across cores under concurrent load, the Node library is
   single-threaded per process).
-- The Go `uncached` pass runs with `LRUCacheSize: 0` so every parse is a full
-  regex run — this is the apples-to-apples number (ua-parser-js has no cache).
-  The `cached` pass reflects this project's production default, where repeating
-  UAs hit the LRU.
+- The Go benchmark prints three passes that must not be confused:
+  - `unique UAs (no LRU)`: every parse gets a string that is in no cache (the
+    corpus shapes with the last number replaced by a counter). This is a full
+    regex run each time and the apples-to-apples number (ua-parser-js has no
+    cache).
+  - `repeated UAs (no LRU)`: the corpus round-robin with `LRUCacheSize: 0`.
+    The result LRU is off, but the core's internal match memo still answers
+    the regex stage, so this is NOT a parsing-speed number. It is the figure
+    that used to be reported as "uncached".
+  - `repeated UAs, LRU hits`: this project's production default, where
+    repeating UAs hit the LRU.
+- The Node/Java/Python client harnesses for this project still loop the plain
+  corpus, i.e. they measure the repeated-UA path through the FFI boundary.
 - Memory is peak process RSS during the benchmark (Go binary measured
   externally; Node via `process.memoryUsage().rss`).

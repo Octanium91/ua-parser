@@ -153,7 +153,9 @@ free; an explicit `set.category` is applied after the switch.
 
 ## 3. Performance
 
-Budget: ≤5% of the 12.7 µs uncached parse; zero cost on cache hits (layer runs
+Budget: ≤5% of a unique-UA parse (13.7 µs for a desktop browser UA,
+`BenchmarkParseUniqueUAByClass/desktop`; the 12.7 µs quoted here earlier was the
+repeated-UA path, not a real parse); zero cost on cache hits (layer runs
 before `cache.Add`, hit path returns earlier — unchanged).
 
 - Compile once at load into an immutable `compiledCorrections`; store in
@@ -164,7 +166,7 @@ before `cache.Add`, hit path returns earlier — unchanged).
   **64 rules** (launch set ≈ 13 → ~150–400 ns ≈ 1–3%). Regex + field checks run
   only for rules whose anchor hit — i.e. only on currently-misparsed traffic.
 - Aho-Corasick over anchors only if the 64 cap ever pressures (avoid the
-  dependency today). CI gate: fail if `BenchmarkParse` regresses >5%.
+  dependency today). CI gate: fail if `BenchmarkParseUniqueUA` regresses >5%.
 
 ## 4. Hot-swap
 
