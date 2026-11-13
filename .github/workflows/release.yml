@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual DRY RUN from any branch: builds, packages and smoke-tests every
+  # artifact exactly like a release, but publishes nothing (no image push, no
+  # Maven/npm publish, no GitHub Release). Use it to validate pipeline changes
+  # before tagging. Every publishing step is gated on a v* tag ref.
+  workflow_dispatch:
 
 jobs:
   # Pre-release gate — same suite as per-commit CI (reusable workflow), plus
@@ -99,22 +104,34 @@ jobs:
         shell: bash
         env:
           CGO_ENABLED: 1
+          # buildpack-deps:bullseye multi-arch index (amd64 + arm64).
+          BULLSEYE_DIGEST: sha256:30d62be8c0d1960899261429cd3960bccffbd075f324adae967c79f410bde24f
         run: |
           GOROOT_HOST="$(go env GOROOT)"
+          go mod download
           if [ "${{ matrix.variant }}" == "musl" ]; then
             echo "Building Linux ${{ matrix.goarch }} (musl/Alpine) in Docker (golang:1.27-alpine) on a native runner..."
             docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace \
               golang:1.27-alpine sh -c '
-                apk add --no-cache gcc musl-dev && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared
+                for i in 1 2 3; do apk add --no-cache gcc musl-dev && break || sleep 10; done && \
+                CGO_ENABLED=1 go build -buildvcs=false -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared
               '
           elif [ "${{ matrix.goos }}" == "linux" ]; then
-            echo "Building Linux ${{ matrix.goarch }} in Docker (debian:bullseye, glibc 2.31) for broad compatibility, on a native runner..."
-            docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" -w /workspace \
-              debian:bullseye bash -c '
-                apt-get update && apt-get install -y gcc ca-certificates && \
+            # glibc 2.31 (Debian 11) keeps the library loadable on older distros.
+            # buildpack-deps ships gcc preinstalled, so nothing is installed at
+            # build time: Debian 11 left the regular mirrors (apt-get against
+            # deb.debian.org now 404s), which broke the v0.0.56 release. The
+            # image is pinned by digest so the toolchain cannot drift or vanish
+            # behind the tag. Go modules come from the host cache (setup-go).
+            echo "Building Linux ${{ matrix.goarch }} in Docker (buildpack-deps:bullseye, glibc 2.31) for broad compatibility, on a native runner..."
+            docker run --rm -v "${{ github.workspace }}:/workspace" -v "${GOROOT_HOST}:/usr/local/go:ro" \
+              -v "$(go env GOMODCACHE):/root/go/pkg/mod" -w /workspace \
+              "buildpack-deps:bullseye@${BULLSEYE_DIGEST}" bash -c '
                 export PATH="/usr/local/go/bin:$PATH" && \
-                CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared
+                CGO_ENABLED=1 go build -buildvcs=false -buildmode=c-shared -ldflags="-s -w" -o ${{ matrix.output_lib }} ./cmd/cshared && \
+                MAX=$(objdump -T ${{ matrix.output_lib }} | grep -o "GLIBC_[0-9.]*" | sort -uV | tail -1) && \
+                echo "Highest glibc symbol version required: $MAX" && \
+                [ "$(printf "%s\n" "GLIBC_2.31" "$MAX" | sort -V | tail -1)" = "GLIBC_2.31" ]
               '
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS dylibs (arm64 + amd64)..."
@@ -192,7 +209,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -212,13 +229,19 @@ jobs:
         run: |
           echo "owner=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_OUTPUT
           echo "repo=${GITHUB_REPOSITORY}" >> $GITHUB_OUTPUT
-          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          # Dry runs (workflow_dispatch on a branch) have no version tag.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0"; fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Set up JDK 11
         uses: actions/setup-java@v6
         with:
           java-version: '11'
           distribution: 'temurin'
+          # Tag builds cannot reuse each other's caches, only the default
+          # branch's: the `java` job in ci.yml keeps this one warm on main.
+          cache: maven
+          cache-dependency-path: clients/java/pom.xml
           server-id: github
           server-username: GITHUB_ACTOR
           # The line below is an env-var NAME resolved by settings.xml, do not change to secrets.GITHUB_TOKEN
@@ -403,6 +426,7 @@ jobs:
           path: clients/java/target/*.jar
 
       - name: Publish to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/v')
         run: mvn -B deploy -f clients/java/pom.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -420,7 +444,8 @@ jobs:
         id: info
         run: |
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
-          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0"; fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - uses: actions/setup-node@v7
         with:
           node-version: '20'
@@ -470,6 +495,7 @@ jobs:
           echo "Package prepared: @$OWNER/ua-parser v$VERSION"
 
       - name: Publish to GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           cd clients/node
           npm publish
@@ -500,7 +526,8 @@ jobs:
       - name: Get Info
         id: info
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0"; fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
@@ -562,6 +589,7 @@ jobs:
   release:
     name: Create Release
     needs: [build-server, build-shared-libs, docker, publish-python, publish-java, publish-node]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write

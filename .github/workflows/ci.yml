@@ -9,6 +9,7 @@ on:
     paths:
       - "pkg/**"
       - "cmd/**"
+      - "clients/java/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/ci.yml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "pkg/**"
       - "cmd/**"
+      - "clients/java/**"
       - "go.mod"
       - "go.sum"
       - ".github/workflows/ci.yml"
@@ -29,3 +31,36 @@ permissions:
 jobs:
   test:
     uses: ./.github/workflows/test.yml
+
+  # Builds the Java client the way a release does for its WASM half: compiles
+  # the engine to wasm, lets Maven precompile it to JVM bytecode, and runs the
+  # smoke tests on the WASM backend (no native library is staged here, so the
+  # client falls back to it, exactly like on Alpine).
+  #
+  # It also keeps the Maven cache warm on main. Release builds run on tags,
+  # and a tag build can only restore caches saved by the default branch, never
+  # by another tag, so this job is what makes `cache: maven` in release.yml hit.
+  java:
+    name: Java client (WASM engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+          cache-dependency-path: clients/java/pom.xml
+
+      - name: Build the WASM engine and stage it for Maven
+        run: |
+          GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" \
+            -o clients/java/src/main/resources/ua-parser.wasm ./cmd/wasm
+
+      - name: Build and test the Java client
+        run: mvn -B package -f clients/java/pom.xml

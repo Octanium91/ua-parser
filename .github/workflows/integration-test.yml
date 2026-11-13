@@ -35,8 +35,9 @@ env:
 jobs:
   setup:
     name: Resolve release tag
-    # For workflow_run, only proceed when the release pipeline succeeded.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # For workflow_run, only proceed when a real (tag-push) release pipeline
+    # succeeded. Dry runs of the release workflow publish nothing to test.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.v.outputs.tag }}
@@ -470,7 +471,9 @@ jobs:
   summary:
     name: Integration summary
     needs: [setup, go, node, python, browser, docker-rest, java]
-    if: always()
+    # Nothing to report when setup was skipped (the release pipeline failed,
+    # was cancelled, or was a dry run): stay skipped instead of going red.
+    if: ${{ always() && needs.setup.result != 'skipped' }}
     runs-on: ubuntu-latest
     steps:
       - name: Report
