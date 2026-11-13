@@ -90,7 +90,7 @@ Native libraries for supported platforms are bundled inside the JAR:
 - **Windows**: x86-64 (win32-x86-64)
 - **macOS**: x86-64, arm64
 
-The library automatically detects the operating system, architecture, and libc to load the correct driver using JNA. If no native driver can be loaded, it automatically falls back to a bundled WebAssembly build of the same engine (Chicory runtime, pure JVM) — same results, slower startup.
+The library automatically detects the operating system, architecture, and libc to load the correct driver using JNA. If no native driver can be loaded, it automatically falls back to a bundled WebAssembly build of the same engine (Chicory runtime, pure JVM; precompiled to JVM bytecode at build time) — same results, slower startup and parsing.
 
 You can check which backend is active via `parser.getBackendName()` (`"JnaBackend"` or `"WasmBackend"`).
 
@@ -98,7 +98,23 @@ You can check which backend is active via `parser.getBackendName()` (`"JnaBacken
 
 #### Alpine Linux / musl
 
-On Alpine (and any musl-based distro) the native driver currently **cannot** be loaded: musl's dynamic loader rejects `dlopen` of Go c-shared libraries ([golang/go#54805](https://github.com/golang/go/issues/54805); not fixed as of Go 1.27). The client detects musl and switches to the WebAssembly backend automatically — no configuration needed. Expected overhead: several seconds of one-time initialization (WASM is compiled to JVM bytecode at startup) and slower parsing than native; results are identical and LRU-cached. The bundled musl `.so` will start loading automatically once a fixed Go toolchain ships and libraries are rebuilt.
+On Alpine (and any musl-based distro) the native driver currently **cannot** be loaded: musl's dynamic loader rejects `dlopen` of Go c-shared libraries ([golang/go#54805](https://github.com/golang/go/issues/54805); not fixed as of Go 1.27). The client detects musl and switches to the WebAssembly backend automatically — no configuration needed. Results are identical to native and LRU-cached; the cost is speed (see the numbers below). The bundled musl `.so` will start loading automatically once a fixed Go toolchain ships and libraries are rebuilt.
+
+The fallback is verified in CI on `eclipse-temurin:17-jre-alpine` and `amazoncorretto:17-alpine`. Measured on `amazoncorretto:17-alpine` (x86-64, JDK 17), with the glibc native driver for comparison:
+
+| | WASM fallback (Alpine) | WASM + `-XX:-DontCompileHugeMethods` | Native (glibc) |
+|---|---|---|---|
+| `new UaParser()` | ~0.9 s | ~0.9 s | ~0.3 s |
+| `init()` | ~8 s | ~8.5 s | ~0.1 s |
+| Parse, UA not in the LRU cache | ~2 ms | ~0.5-0.7 ms | ~0.03 ms |
+| Parse, UA in the LRU cache | ~0.5 ms | ~0.1 ms | ~0.01 ms |
+| Heap retained after GC | ~60-70 MB | ~60-70 MB | ~2 MB (engine lives off-heap) |
+
+Recommendations for Alpine:
+
+- **Add `-XX:-DontCompileHugeMethods` to the JVM options** (for example `ENV JAVA_TOOL_OPTIONS="-XX:-DontCompileHugeMethods"` in your Dockerfile). The engine's hot functions become JVM methods larger than HotSpot's default JIT limit (8000 bytecodes), so without the flag they stay in the bytecode interpreter; with it parsing is about 3-4x faster.
+- **Create and `init()` the parser once at application startup**, not on the first request: initialization takes about 9 seconds in WASM mode.
+- **Size the LRU cache for your traffic** (`Config.lruCacheSize`): cache hits are sub-millisecond, misses are not.
 
 If you need native-level throughput on Alpine, run the standalone REST server (`ghcr.io/octanium91/ua-parser`) next to your application, or use a glibc-based base image (e.g. `eclipse-temurin:17-jre`).
 
@@ -214,7 +230,7 @@ To build the JAR yourself:
 mvn clean package
 ```
 
-> **Important**: a bare source build produces a JAR **without** native drivers or the WASM module — `new UaParser()` will fail at runtime. Before packaging, place the release artifacts into `src/main/resources` using this layout (as CI does):
+> **Important**: a bare source build produces a JAR **without** native drivers or the WASM engine — `new UaParser()` will fail at runtime. Before packaging, place the release artifacts into `src/main/resources` using this layout (as CI does):
 > ```
 > src/main/resources/linux-x86-64/libua_parser.so        (glibc amd64)
 > src/main/resources/linux-aarch64/libua_parser.so       (glibc arm64)

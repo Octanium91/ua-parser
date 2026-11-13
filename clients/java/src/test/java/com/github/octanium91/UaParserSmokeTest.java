@@ -6,6 +6,7 @@ import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
 /**
@@ -18,24 +19,20 @@ public class UaParserSmokeTest {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                     + " (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-    private static boolean hasResource(String path) {
-        return UaParserSmokeTest.class.getResource(path) != null;
-    }
-
     @Test
     public void wasmBackendParsesChromeUa() {
-        assumeTrue("ua-parser.wasm not staged; skipping", hasResource("/ua-parser.wasm"));
+        assumeTrue("WASM engine not built into this checkout; skipping", WasmBackend.isAvailable());
 
         WasmBackend backend = new WasmBackend();
         backend.init("{\"disable_auto_update\":true,\"lru_cache_size\":100}");
         String json = backend.parse("{\"ua\":\"" + CHROME_UA + "\",\"headers\":{}}");
         assertNotNull("WASM backend returned null", json);
-        assumeTrue(json.contains("\"Chrome\""));
+        assertTrue("unexpected WASM result: " + json, json.contains("\"Chrome\""));
     }
 
     @Test
     public void endToEndSelectsSomeBackendAndParses() {
-        assumeTrue("no resources staged; skipping", hasResource("/ua-parser.wasm"));
+        assumeTrue("no resources staged; skipping", WasmBackend.isAvailable());
 
         UaParser parser = new UaParser();
         UaParser.Config cfg = new UaParser.Config();

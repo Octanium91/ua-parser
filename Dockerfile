@@ -1,5 +1,9 @@
 # Stage 1: Build
-FROM golang:1.27-alpine AS builder
+# Runs on the BUILD machine's own architecture and cross-compiles to
+# TARGETARCH below (pure Go, CGO off). Without --platform the arm64 image
+# would run the whole Go toolchain under QEMU emulation, which is several
+# times slower and known-flaky (golang/go#68976).
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 WORKDIR /app
 

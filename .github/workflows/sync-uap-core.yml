@@ -26,7 +26,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fetch latest sha-pinned regexes.yaml
         id: fetch
@@ -51,7 +51,7 @@ jobs:
             git --no-pager diff --stat -- pkg/core/resources/
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.diff.outputs.changed == 'true'
         with:
           go-version: '1.27'

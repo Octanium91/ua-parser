@@ -367,11 +367,15 @@ jobs:
           echo "$OUT" | grep -q 'browser=Chrome'    || { echo "::error::glibc parse failed"; exit 1; }
       - name: Run on Alpine (expect WASM fallback)
         run: |
-          OUT=$(docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" \
-            eclipse-temurin:17-jre-alpine java -jar target/itest.jar)
-          echo "$OUT"
-          echo "$OUT" | grep -q 'backend=WasmBackend' || { echo "::error::Alpine should fall back to WasmBackend"; exit 1; }
-          echo "$OUT" | grep -q 'browser=Chrome'      || { echo "::error::Alpine WASM parse failed"; exit 1; }
+          for image in eclipse-temurin:17-jre-alpine amazoncorretto:17-alpine; do
+            echo "::group::$image"
+            OUT=$(docker run --rm -v "$PWD/work:/work" -w /work -e UA="$UA" \
+              "$image" java -jar target/itest.jar)
+            echo "$OUT"
+            echo "::endgroup::"
+            echo "$OUT" | grep -q 'backend=WasmBackend' || { echo "::error::$image should fall back to WasmBackend"; exit 1; }
+            echo "$OUT" | grep -q 'browser=Chrome'      || { echo "::error::$image WASM parse failed"; exit 1; }
+          done
 
   rollback:
     name: Roll back failed release

@@ -55,7 +55,8 @@
 
 ## WebAssembly backends — two distinct ABIs
 - `ua-parser.wasm` (from `cmd/wasm`, `GOOS=wasip1` reactor) and `ua-parser-js.wasm` (from `cmd/wasmjs`, `GOOS=js`) are **different ABIs and are not interchangeable**.
-- Java loads `ua-parser.wasm` via **Chicory**, and the `com.dylibso.chicory:compiler` module is **required** (it compiles the module to JVM bytecode; without it the interpreter takes 60+ seconds to start). Never drop the `compiler` dependency.
+- Java runs the engine on **Chicory**, translated to JVM bytecode at **build time** by `chicory-compiler-maven-plugin` (`clients/java/pom.xml`, profile `precompile-wasm`, active when `src/main/resources/ua-parser.wasm` is staged). The JAR ships the generated classes (`com.github.octanium91.wasm.*`) plus a stripped `.meta` module, not the raw `.wasm`, and there is no runtime `com.dylibso.chicory:compiler` dependency. Do not move compilation back to runtime: measured on `amazoncorretto:17-alpine` it cost ~7 s of startup and ~250 MB of heap per JVM. `WasmBackend` resolves the generated class reflectively so a bare checkout (no staged wasm) still compiles.
+- WASM-mode numbers on `amazoncorretto:17-alpine` (measured 2026-11-13, x86-64): constructor ~0.9 s, `init()` ~8 s, unique UA ~2 ms (~0.5-0.7 ms with `-XX:-DontCompileHugeMethods`), cached UA ~0.1-0.5 ms. The same module in Node 20 (V8) inits in ~0.5 s and parses a unique UA in ~0.1 ms, so the remaining gap is HotSpot refusing to JIT the huge generated methods, not the Go code.
 - Node.js loads `ua-parser.wasm` via `node:wasi`.
 - The browser build exposes a global API after `go.run(instance)`: `globalThis.initUA(configJson)` and `globalThis.parseUA(payloadJson)`, where the parse payload is a JSON string `{"ua": "...", "headers": {...}}` and the result is a JSON string. Keep the vanilla/CDN docs pointed at this API (there is no `UaParser` global without a bundler).
 

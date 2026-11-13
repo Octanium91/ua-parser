@@ -58,14 +58,6 @@
             <artifactId>wasi</artifactId>
             <version>${chicory.version}</version>
         </dependency>
-        <!-- Translates WASM to JVM bytecode at runtime; without it the
-             WASM fallback runs in the interpreter (60+ s startup). -->
-        <dependency>
-            <groupId>com.dylibso.chicory</groupId>
-            <artifactId>compiler</artifactId>
-            <version>${chicory.version}</version>
-        </dependency>
-
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
@@ -100,7 +92,9 @@
                     <include>**/*.dylib</include>
                     <include>**/*.yaml</include>
                     <include>**/*.json</include>
-                    <include>**/*.wasm</include>
+                    <!-- ua-parser.wasm is deliberately NOT bundled: the
+                         precompile-wasm profile below ships it as JVM
+                         bytecode plus a stripped .meta module instead. -->
                 </includes>
             </resource>
         </resources>
@@ -109,6 +103,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
                 <version>3.2.1</version>
+                <configuration>
+                    <!-- Sources only: without this the -sources.jar also
+                         carries every native library (a second ~20 MB copy
+                         uploaded to the Release and to GitHub Packages). -->
+                    <excludeResources>true</excludeResources>
+                </configuration>
                 <executions>
                     <execution>
                         <id>attach-sources</id>
@@ -137,4 +137,48 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Translates the WASM fallback engine to JVM bytecode at BUILD time
+             (classes under com.github.octanium91.wasm). Doing this at runtime
+             cost every Alpine/musl user ~7 s of startup and ~250 MB of heap,
+             and needed the Chicory compiler + ASM on the consumer classpath.
+             Active whenever CI (or a developer) has staged ua-parser.wasm;
+             a bare source checkout still builds, just without the fallback. -->
+        <profile>
+            <id>precompile-wasm</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/src/main/resources/ua-parser.wasm</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.dylibso.chicory</groupId>
+                        <artifactId>chicory-compiler-maven-plugin</artifactId>
+                        <version>${chicory.version}</version>
+                        <executions>
+                            <execution>
+                                <id>precompile-wasm</id>
+                                <goals>
+                                    <goal>compile</goal>
+                                </goals>
+                                <configuration>
+                                    <wasmFile>${basedir}/src/main/resources/ua-parser.wasm</wasmFile>
+                                    <name>com.github.octanium91.wasm.UaParserModule</name>
+                                    <!-- One Go init function (a huge unicode
+                                         table initializer) exceeds the JVM
+                                         method size limit and stays
+                                         interpreted; it only runs during
+                                         init, never on the parse path. -->
+                                    <interpreterFallback>WARN</interpreterFallback>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

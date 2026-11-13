@@ -19,8 +19,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
 
@@ -37,7 +37,7 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ua-server-windows-amd64.exe ./cmd/server
 
       - name: Upload Server Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-executables
           path: |
@@ -89,9 +89,9 @@ jobs:
             output_lib: ua-parser.wasm
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.27'
 
@@ -134,7 +134,7 @@ jobs:
           fi
 
       - name: Upload Shared Library Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shared-lib-${{ matrix.os }}-${{ matrix.goarch }}${{ matrix.variant == 'musl' && '-musl' || '' }}
           path: |
@@ -155,16 +155,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
+      # Only the final image stage needs emulation (apk add on arm64); the Go
+      # build stage runs natively and cross-compiles (see Dockerfile).
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -177,7 +179,7 @@ jobs:
 
       - name: Extract Metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ${{ steps.prep.outputs.image }}
@@ -187,7 +189,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and Push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -203,7 +205,7 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Get Info
         id: info
@@ -213,7 +215,7 @@ jobs:
           echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Set up JDK 11
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '11'
           distribution: 'temurin'
@@ -223,7 +225,7 @@ jobs:
           server-password: GITHUB_TOKEN
 
       - name: Download Shared Libs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: shared-lib-*
           path: clients/java/src/main/resources
@@ -358,23 +360,44 @@ jobs:
       - name: Build JAR file (runs smoke tests on glibc)
         run: mvn -B package -f clients/java/pom.xml
 
-      - name: Smoke test on Alpine (musl) container
+      - name: Verify the JAR bundles the precompiled WASM engine
+        run: |
+          # The WASM fallback ships as JVM bytecode generated at build time
+          # (pom.xml profile "precompile-wasm"). If the profile silently did
+          # not run, Alpine users would get a JAR with no working backend.
+          JAR=$(find clients/java/target -maxdepth 1 -name 'ua-parser-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar')
+          unzip -l "$JAR" > jar-contents.txt
+          for entry in com/github/octanium91/wasm/UaParserModule.class com/github/octanium91/wasm/UaParserModule.meta; do
+            grep -q "$entry" jar-contents.txt || { echo "::error::$entry missing from $JAR"; exit 1; }
+          done
+          if grep -q 'ua-parser.wasm' jar-contents.txt; then
+            echo "::error::raw ua-parser.wasm must not be bundled (it ships precompiled)"; exit 1
+          fi
+          echo "Precompiled WASM engine present in $JAR"
+
+      - name: Smoke test on Alpine (musl) containers
         run: |
           mvn -B -q dependency:copy-dependencies -f clients/java/pom.xml
-          docker run --rm -v "${{ github.workspace }}/clients/java:/app" -w /app \
-            eclipse-temurin:17-jre-alpine \
-            java -cp 'target/classes:target/test-classes:target/dependency/*' \
-              org.junit.runner.JUnitCore com.github.octanium91.UaParserSmokeTest
+          # Both JDK builds users commonly run on Alpine. amazoncorretto also
+          # covers arm64 hosts, where temurin has no 17-alpine image.
+          for image in eclipse-temurin:17-jre-alpine amazoncorretto:17-alpine; do
+            echo "::group::$image"
+            docker run --rm -v "${{ github.workspace }}/clients/java:/app" -w /app \
+              "$image" \
+              java -cp 'target/classes:target/test-classes:target/dependency/*' \
+                org.junit.runner.JUnitCore com.github.octanium91.UaParserSmokeTest
+            echo "::endgroup::"
+          done
 
       - name: Upload JAR to Release Immediately
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: clients/java/target/*.jar
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Java Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: java-jar
           path: clients/java/target/*.jar
@@ -392,20 +415,20 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Get Info
         id: info
         run: |
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
           echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@${{ steps.info.outputs.owner }}'
 
       - name: Download Shared Libs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: shared-lib-*
           path: clients/node/lib/
@@ -462,7 +485,7 @@ jobs:
           ls -1 *.tgz
 
       - name: Attach npm tarball to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: clients/node/*.tgz
@@ -473,13 +496,13 @@ jobs:
     needs: build-shared-libs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Get Info
         id: info
         run: |
           echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       
@@ -489,7 +512,7 @@ jobs:
           pip install wheel setuptools
       
       - name: Download Shared Libs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: shared-lib-*
           path: clients/python/uaparser/
@@ -531,7 +554,7 @@ jobs:
           python setup.py bdist_wheel
 
       - name: Upload Wheel Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-wheel
           path: clients/python/dist/*.whl
@@ -543,7 +566,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Prepare lowercase names
         id: prep
@@ -552,13 +575,13 @@ jobs:
           echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-artifacts/ua-server-linux-amd64
@@ -591,7 +614,7 @@ jobs:
             - **libua-parser-linux-[arch]-musl.so**: Shared library for Linux musl (amd64, arm64). Note: current Go toolchains cannot be dlopen'd on Alpine/musl (golang/go#54805) — on Alpine the Java and Node.js clients automatically use the WebAssembly backend instead; these musl builds ship for forward compatibility.
             - **ua-parser-windows-amd64.dll / .h**: Shared library for Windows. **Required driver for Python, Node.js, and Java integrations.**
             - **libua-parser-darwin-[arch].dylib / .h**: Shared library for macOS (amd64, arm64). **Required driver for Python, Node.js, and Java integrations.**
-            - **ua-parser.wasm**: WebAssembly (WASI reactor) module — the automatic fallback engine for the Java (Chicory) and Node.js (node:wasi) clients.
+            - **ua-parser.wasm**: WebAssembly (WASI reactor) module — the automatic fallback engine for the Node.js client (node:wasi) and, precompiled to JVM bytecode inside the JAR, for the Java client (Chicory).
             - **ua-parser-js.wasm / wasm_exec.js**: WebAssembly (js/wasm) module and Go loader for Browser usage.
             - **.whl**: Python wheel for easy installation (includes multi-arch drivers).
             
