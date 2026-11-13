@@ -72,7 +72,9 @@ jobs:
             goos: windows
             goarch: amd64
             output_lib: ua-parser-windows-amd64.dll
-          - os: macos-14
+          # macos-14 runners were retired on 2026-11-02; jobs on them are
+          # cancelled before they start.
+          - os: macos-15
             goos: darwin
             goarch: "universal"
             output_lib: libua-parser-darwin-arm64.dylib
@@ -135,8 +137,14 @@ jobs:
               '
           elif [ "${{ matrix.goos }}" == "darwin" ]; then
             echo "Building macOS dylibs (arm64 + amd64)..."
+            # Do not inherit the runner's own OS version as the minimum:
+            # keep the libraries loadable on older macOS releases.
+            export MACOSX_DEPLOYMENT_TARGET=12.0
             GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-arm64.dylib ./cmd/cshared
             GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -buildmode=c-shared -ldflags="-s -w" -o libua-parser-darwin-amd64.dylib ./cmd/cshared
+            for lib in libua-parser-darwin-arm64.dylib libua-parser-darwin-amd64.dylib; do
+              echo "$lib minimum macOS: $(otool -l "$lib" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | grep -E 'minos|version ' | head -1 | xargs)"
+            done
           elif [ "${{ matrix.goos }}" == "wasip1" ]; then
             echo "Building WebAssembly: WASI reactor (Node/Java fallback) + js/wasm (browser)..."
             GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o ua-parser.wasm ./cmd/wasm
